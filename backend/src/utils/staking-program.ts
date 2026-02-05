@@ -237,3 +237,72 @@ export function getVaultAddressString(): string {
   const [vault] = getVaultAddress(tokenMint);
   return vault.toBase58();
 }
+
+// Fetch ALL user stakes from on-chain using getProgramAccounts
+// This scans all UserStake PDAs to find every staker
+export async function fetchAllOnChainStakes(): Promise<Array<{
+  wallet: string;
+  amount: bigint;
+  stakedAt: number;
+}>> {
+  try {
+    const connection = getConnection();
+    const tokenMint = new PublicKey(config.tokenMint);
+    const [stakePool] = getStakePoolAddress(tokenMint);
+
+    // UserStake accounts have a specific structure:
+    // 8 bytes discriminator + 32 bytes owner + 8 bytes amount + 8 bytes staked_at + 1 byte bump
+    // Total: 57 bytes (but Anchor pads to 8-byte alignment, so likely 64 bytes)
+
+    // Filter by the stake_pool in the PDA seeds - we look for accounts that start with "user_stake" seed
+    const accounts = await connection.getProgramAccounts(STAKING_PROGRAM_ID, {
+      filters: [
+        // Filter by account size (UserStake struct size)
+        { dataSize: 57 }, // 8 discriminator + 32 owner + 8 amount + 8 staked_at + 1 bump
+      ],
+    });
+
+    console.log(`[SYNC] Found ${accounts.length} potential stake accounts on-chain`);
+
+    const stakes: Array<{ wallet: string; amount: bigint; stakedAt: number }> = [];
+
+    for (const account of accounts) {
+      try {
+        const data = account.account.data;
+
+        // Skip 8-byte discriminator
+        const accountData = data.slice(8);
+
+        // owner: Pubkey (32 bytes)
+        const ownerBytes = accountData.slice(0, 32);
+        const owner = new PublicKey(ownerBytes).toBase58();
+
+        // amount: u64 (8 bytes)
+        const amount = new BN(accountData.slice(32, 40), 'le').toString();
+
+        // staked_at: i64 (8 bytes)
+        const stakedAt = new BN(accountData.slice(40, 48), 'le').toNumber();
+
+        const amountBigInt = BigInt(amount);
+
+        // Only include stakes with amount > 0
+        if (amountBigInt > 0n) {
+          stakes.push({
+            wallet: owner,
+            amount: amountBigInt,
+            stakedAt,
+          });
+        }
+      } catch (parseError) {
+        // Skip accounts that don't parse correctly (might be different account type)
+        continue;
+      }
+    }
+
+    console.log(`[SYNC] Parsed ${stakes.length} active stakes from on-chain`);
+    return stakes;
+  } catch (error) {
+    console.error('Error fetching all on-chain stakes:', error);
+    return [];
+  }
+}

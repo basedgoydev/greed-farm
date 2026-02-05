@@ -9,6 +9,7 @@ import {
 } from '../utils/math.js';
 import { getEligibleStakes, getTotalEligibleStake } from './staking.js';
 import { fetchTotalStaked, isPoolInitialized } from '../utils/staking-program.js';
+import { syncAllOnChainStakesToDB } from './stake-sync.js';
 
 interface EpochResult {
   epochNumber: number;
@@ -61,6 +62,11 @@ export async function getEpochStartTime(): Promise<Date> {
 export async function finalizeEpoch(): Promise<EpochResult> {
   const now = new Date();
   const nowIso = now.toISOString();
+
+  // IMPORTANT: Sync all on-chain stakes to DB BEFORE distribution
+  // This ensures every on-chain staker is in the database and gets rewards
+  console.log('[EPOCH] Syncing all on-chain stakes to DB before distribution...');
+  await syncAllOnChainStakesToDB();
 
   // Get current treasury balance
   const currentTreasuryBalance = await getTreasuryBalance();

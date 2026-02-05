@@ -1,6 +1,6 @@
 import { db, toBigInt } from '../db/index.js';
 import { config } from '../config.js';
-import { fetchUserStake, fetchTotalStaked, isPoolInitialized } from '../utils/staking-program.js';
+import { fetchUserStake, fetchTotalStaked, isPoolInitialized, fetchAllOnChainStakes } from '../utils/staking-program.js';
 import { Connection, PublicKey } from '@solana/web3.js';
 
 // Sync a user's stake from on-chain data
@@ -117,6 +117,69 @@ export async function checkProgramReady(): Promise<boolean> {
   return true;
 }
 
+// Sync ALL on-chain stakes to database
+// This ensures every on-chain staker is in the DB for reward distribution
+export async function syncAllOnChainStakesToDB(): Promise<number> {
+  const programReady = await checkProgramReady();
+  if (!programReady) {
+    console.log('[SYNC] Program not ready, cannot sync on-chain stakes');
+    return 0;
+  }
+
+  console.log('[SYNC] Fetching all on-chain stakes...');
+
+  const onChainStakes = await fetchAllOnChainStakes();
+  let syncedCount = 0;
+
+  for (const stake of onChainStakes) {
+    try {
+      // Get or create user
+      let user = await db.get<{ id: number }>('SELECT id FROM users WHERE wallet = ?', [stake.wallet]);
+      if (!user) {
+        await db.run(
+          'INSERT INTO users (wallet, claimable_lamports, total_claimed_lamports, total_won_lamports, total_lost_lamports) VALUES (?, 0, 0, 0, 0)',
+          [stake.wallet]
+        );
+        user = await db.get<{ id: number }>('SELECT id FROM users WHERE wallet = ?', [stake.wallet]);
+        console.log(`[SYNC] Created new user for wallet ${stake.wallet}`);
+      }
+
+      const stakedAt = new Date(stake.stakedAt * 1000);
+
+      // Check if stake already exists and update, or create new
+      const existingStake = await db.get<{ id: number; amount: string }>(
+        'SELECT id, amount FROM stakes WHERE user_id = ? AND is_active = TRUE',
+        [user!.id]
+      );
+
+      if (existingStake) {
+        // Update if amount changed
+        if (toBigInt(existingStake.amount) !== stake.amount) {
+          await db.run(
+            'UPDATE stakes SET amount = ?, staked_at = ? WHERE id = ?',
+            [stake.amount.toString(), stakedAt.toISOString(), existingStake.id]
+          );
+          console.log(`[SYNC] Updated stake for ${stake.wallet}: ${stake.amount}`);
+        }
+      } else {
+        // Create new stake record
+        await db.run(
+          'INSERT INTO stakes (user_id, amount, staked_at, is_active) VALUES (?, ?, ?, TRUE)',
+          [user!.id, stake.amount.toString(), stakedAt.toISOString()]
+        );
+        console.log(`[SYNC] Created stake for ${stake.wallet}: ${stake.amount}`);
+      }
+
+      syncedCount++;
+    } catch (error) {
+      console.error(`[SYNC] Error syncing stake for ${stake.wallet}:`, error);
+    }
+  }
+
+  console.log(`[SYNC] Synced ${syncedCount} on-chain stakes to DB`);
+  return syncedCount;
+}
+
 // Sync stakes - updates total from both on-chain and DB
 export async function syncAllStakes(): Promise<void> {
   const programReady = await checkProgramReady();
@@ -125,6 +188,9 @@ export async function syncAllStakes(): Promise<void> {
   }
 
   console.log('[SYNC] Syncing stakes...');
+
+  // Sync all on-chain stakes to DB first
+  await syncAllOnChainStakesToDB();
 
   // Sync total staked (combines on-chain + DB)
   await syncTotalStaked();
