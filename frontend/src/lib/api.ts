@@ -26,10 +26,20 @@ export interface GameStatus {
     currentEligible: string;
     requiredForQuorum: string;
     percentage: number;
+    quorumReached?: boolean;
+    quorumReachedAt?: string | null;
+  };
+  countdown: {
+    active: boolean;
+    complete: boolean;
+    remainingMs: number | null;
+    remainingSeconds: number | null;
+    startedAt: string | null;
   };
   nextEpoch: {
-    inMs: number;
-    inSeconds: number;
+    inMs: number | null;
+    inSeconds: number | null;
+    waitingForQuorum?: boolean;
   };
   config: {
     epochDuration: number;

@@ -140,9 +140,10 @@ export const Dashboard: FC = () => {
         {/* Timer, Progress, and Leaderboard Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <EpochTimer
-            remainingMs={status?.nextEpoch.inMs || 0}
+            remainingMs={status?.countdown?.remainingMs ?? null}
             epochNumber={status?.currentEpoch || 1}
-            quorumReached={(status?.harvest?.percentage || 0) >= 100}
+            quorumReached={status?.countdown?.active || status?.harvest?.quorumReached || false}
+            countdownActive={status?.countdown?.active || false}
           />
           <HarvestProgress
             harvest={status?.harvest || null}
