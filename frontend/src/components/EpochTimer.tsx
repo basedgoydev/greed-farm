@@ -7,6 +7,7 @@ interface EpochTimerProps {
   epochNumber: number;
   quorumReached?: boolean;
   countdownActive?: boolean;
+  countdownComplete?: boolean;
 }
 
 export const EpochTimer: FC<EpochTimerProps> = ({
@@ -14,6 +15,7 @@ export const EpochTimer: FC<EpochTimerProps> = ({
   epochNumber,
   quorumReached = false,
   countdownActive = false,
+  countdownComplete = false,
 }) => {
   const [timeLeft, setTimeLeft] = useState(remainingMs || 0);
 
@@ -21,6 +23,8 @@ export const EpochTimer: FC<EpochTimerProps> = ({
   useEffect(() => {
     if (remainingMs !== null && remainingMs > 0) {
       setTimeLeft(remainingMs);
+    } else if (remainingMs === null) {
+      setTimeLeft(0);
     }
   }, [remainingMs]);
 
@@ -41,7 +45,8 @@ export const EpochTimer: FC<EpochTimerProps> = ({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const isCountdownComplete = quorumReached && timeLeft <= 0;
+  // Only show distributing if countdown was active and completed
+  const isDistributing = countdownComplete || (countdownActive && timeLeft <= 0);
 
   return (
     <div className="relative overflow-hidden card-greed p-4">
@@ -57,7 +62,7 @@ export const EpochTimer: FC<EpochTimerProps> = ({
         </div>
 
         <div className="flex items-center justify-center py-4">
-          {isCountdownComplete ? (
+          {isDistributing ? (
             // Countdown complete - distributing
             <div className="text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-greed-green/10 border border-greed-green/30">
@@ -66,7 +71,7 @@ export const EpochTimer: FC<EpochTimerProps> = ({
               </div>
               <p className="text-[10px] text-[#556688] mt-2">Rewards being distributed</p>
             </div>
-          ) : quorumReached && countdownActive ? (
+          ) : countdownActive ? (
             // Quorum reached - show countdown
             <div className="text-center">
               <div className="text-4xl font-bold font-mono text-greed-green mb-2">
@@ -79,6 +84,17 @@ export const EpochTimer: FC<EpochTimerProps> = ({
                 <span className="text-sm text-greed-green font-medium">Distribution in progress</span>
               </div>
               <p className="text-[10px] text-[#556688] mt-2">Rewards will be distributed when timer ends</p>
+            </div>
+          ) : quorumReached ? (
+            // Quorum reached but waiting for funds
+            <div className="text-center">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-israel-blue/10 border border-israel-blue/30">
+                <svg className="w-4 h-4 text-israel-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm text-israel-blue-light font-medium">Waiting for fees</span>
+              </div>
+              <p className="text-[10px] text-[#556688] mt-2">Quorum reached - awaiting treasury funds</p>
             </div>
           ) : (
             // Waiting for quorum

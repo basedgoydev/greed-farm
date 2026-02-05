@@ -142,8 +142,9 @@ export const Dashboard: FC = () => {
           <EpochTimer
             remainingMs={status?.countdown?.remainingMs ?? null}
             epochNumber={status?.currentEpoch || 1}
-            quorumReached={status?.countdown?.active || status?.harvest?.quorumReached || false}
+            quorumReached={status?.harvest?.quorumReached || false}
             countdownActive={status?.countdown?.active || false}
+            countdownComplete={status?.countdown?.complete || false}
           />
           <HarvestProgress
             harvest={status?.harvest || null}
