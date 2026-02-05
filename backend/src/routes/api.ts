@@ -158,8 +158,13 @@ router.get('/status', async (req: Request, res: Response) => {
     const pendingFees = currentTreasuryBalance > lastBalance
       ? currentTreasuryBalance - lastBalance
       : 0n;
-    const pendingSharedPool = (pendingFees * 90n) / 100n;
-    const pendingGreedPot = (pendingFees * 10n) / 100n;
+    const pendingSharedPool = (pendingFees * 80n) / 100n;
+    const pendingGreedPot = (pendingFees * 20n) / 100n;
+
+    // Determine countdown status
+    const quorumReached = harvestProgress.percentage >= 100;
+    const countdownActive = quorumReached && timeUntilNextEpoch >= 0;
+    const countdownComplete = quorumReached && timeUntilNextEpoch === 0;
 
     res.json({
       currentEpoch: state.current_epoch,
@@ -186,11 +191,21 @@ router.get('/status', async (req: Request, res: Response) => {
       harvest: {
         currentEligible: harvestProgress.currentStake,
         requiredForQuorum: harvestProgress.requiredStake,
-        percentage: harvestProgress.percentage
+        percentage: harvestProgress.percentage,
+        quorumReached,
+        quorumReachedAt: state.quorum_reached_at
+      },
+      countdown: {
+        active: countdownActive,
+        complete: countdownComplete,
+        remainingMs: timeUntilNextEpoch >= 0 ? timeUntilNextEpoch : null,
+        remainingSeconds: timeUntilNextEpoch >= 0 ? Math.floor(timeUntilNextEpoch / 1000) : null,
+        startedAt: state.quorum_reached_at
       },
       nextEpoch: {
-        inMs: timeUntilNextEpoch,
-        inSeconds: Math.floor(timeUntilNextEpoch / 1000)
+        inMs: timeUntilNextEpoch >= 0 ? timeUntilNextEpoch : null,
+        inSeconds: timeUntilNextEpoch >= 0 ? Math.floor(timeUntilNextEpoch / 1000) : null,
+        waitingForQuorum: !quorumReached
       },
       config: {
         epochDuration: config.epochDuration,

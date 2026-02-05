@@ -99,6 +99,23 @@ async function start() {
 
   console.log(`[DB] Running migrations (${isPostgres ? 'PostgreSQL' : 'SQLite'})...`);
   await db.exec(schemaToUse);
+
+  // Add quorum_reached_at column if it doesn't exist (migration)
+  try {
+    if (isPostgres) {
+      await db.run(`ALTER TABLE global_state ADD COLUMN IF NOT EXISTS quorum_reached_at TIMESTAMP`);
+    } else {
+      // SQLite doesn't support IF NOT EXISTS for columns, so we try and catch
+      await db.run(`ALTER TABLE global_state ADD COLUMN quorum_reached_at TIMESTAMP`);
+    }
+    console.log('[DB] Added quorum_reached_at column');
+  } catch (err: any) {
+    // Column likely already exists
+    if (!err.message?.includes('duplicate') && !err.message?.includes('already exists')) {
+      console.log('[DB] quorum_reached_at column already exists or migration skipped');
+    }
+  }
+
   console.log('[DB] Migrations complete');
 
   const server = app.listen(config.port, () => {

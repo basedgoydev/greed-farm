@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS global_state (
   greed_pot_lamports BIGINT DEFAULT 0,
   total_staked BIGINT DEFAULT 0,
   treasury_last_balance BIGINT DEFAULT 0,
+  quorum_reached_at TIMESTAMP,
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -169,6 +170,7 @@ CREATE TABLE IF NOT EXISTS global_state (
   greed_pot_lamports BIGINT DEFAULT 0,
   total_staked BIGINT DEFAULT 0,
   treasury_last_balance BIGINT DEFAULT 0,
+  quorum_reached_at TIMESTAMP,
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

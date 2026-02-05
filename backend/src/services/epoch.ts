@@ -36,6 +36,7 @@ export async function getGlobalState(): Promise<GlobalState> {
     greed_pot_lamports: toBigInt(state.greed_pot_lamports),
     total_staked: toBigInt(state.total_staked),
     treasury_last_balance: toBigInt(state.treasury_last_balance),
+    quorum_reached_at: state.quorum_reached_at as string | null,
     last_updated: state.last_updated as string
   };
 }
@@ -58,7 +59,81 @@ export async function getEpochStartTime(): Promise<Date> {
   return new Date();
 }
 
-// Finalize the current epoch and start a new one (only if quorum reached)
+// Check and update quorum status - called frequently to track when quorum is reached
+export async function checkAndUpdateQuorum(): Promise<{
+  quorumReached: boolean;
+  quorumReachedAt: string | null;
+  countdownActive: boolean;
+  countdownRemaining: number;
+}> {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const state = await getGlobalState();
+
+  // Sync on-chain stakes to DB
+  await syncAllOnChainStakesToDB();
+
+  // Get eligible stake total
+  let totalEligibleStake = 0n;
+  try {
+    const poolReady = await isPoolInitialized();
+    if (poolReady) {
+      totalEligibleStake = await fetchTotalStaked();
+    }
+  } catch (error) {
+    console.error('[EPOCH] Error fetching on-chain total:', error);
+  }
+
+  // Fall back to DB if needed
+  if (totalEligibleStake === 0n) {
+    totalEligibleStake = await getTotalEligibleStake();
+  }
+
+  const quorumThreshold = getQuorumThreshold(state.current_epoch);
+  const quorumReached = totalEligibleStake >= quorumThreshold;
+
+  let quorumReachedAt = state.quorum_reached_at;
+  let countdownActive = false;
+  let countdownRemaining = 0;
+
+  if (quorumReached) {
+    // Quorum is reached
+    if (!quorumReachedAt) {
+      // First time quorum reached - start countdown
+      quorumReachedAt = nowIso;
+      await db.run(
+        'UPDATE global_state SET quorum_reached_at = ?, last_updated = ? WHERE id = 1',
+        [quorumReachedAt, nowIso]
+      );
+      console.log(`[EPOCH] Quorum reached! Countdown started at ${quorumReachedAt}`);
+    }
+
+    // Calculate countdown remaining
+    const quorumTime = new Date(quorumReachedAt).getTime();
+    const elapsed = now.getTime() - quorumTime;
+    countdownRemaining = Math.max(0, config.epochDuration * 1000 - elapsed);
+    countdownActive = countdownRemaining > 0;
+  } else {
+    // Quorum not reached - reset countdown if it was active
+    if (quorumReachedAt) {
+      await db.run(
+        'UPDATE global_state SET quorum_reached_at = NULL, last_updated = ? WHERE id = 1',
+        [nowIso]
+      );
+      console.log('[EPOCH] Quorum lost - countdown reset');
+    }
+    quorumReachedAt = null;
+  }
+
+  return {
+    quorumReached,
+    quorumReachedAt,
+    countdownActive,
+    countdownRemaining
+  };
+}
+
+// Finalize the current epoch and start a new one (only if quorum reached AND countdown complete)
 export async function finalizeEpoch(): Promise<EpochResult> {
   const now = new Date();
   const nowIso = now.toISOString();
@@ -116,12 +191,28 @@ export async function finalizeEpoch(): Promise<EpochResult> {
 
   console.log(`[EPOCH] On-chain stake: ${totalEligibleStake}, DB eligible: ${dbEligibleTotal}, Threshold: ${quorumThreshold}, Quorum: ${quorumReached}`);
 
+  // Check if countdown is complete
+  let countdownComplete = false;
+  if (quorumReached && state.quorum_reached_at) {
+    const quorumTime = new Date(state.quorum_reached_at).getTime();
+    const elapsed = now.getTime() - quorumTime;
+    countdownComplete = elapsed >= config.epochDuration * 1000;
+    console.log(`[EPOCH] Countdown: ${elapsed}ms elapsed, ${config.epochDuration * 1000}ms required, complete: ${countdownComplete}`);
+  } else if (quorumReached && !state.quorum_reached_at) {
+    // Quorum just reached - set timestamp and wait for countdown
+    await db.run(
+      'UPDATE global_state SET quorum_reached_at = ?, last_updated = ? WHERE id = 1',
+      [nowIso, nowIso]
+    );
+    console.log('[EPOCH] Quorum just reached - countdown started, will distribute after countdown completes');
+  }
+
   let distributed = false;
   let distributedTo = 0;
   let totalDistributed = 0n;
 
-  // Only distribute and advance epoch if quorum is reached
-  if (quorumReached && sharedPool > 0n && dbEligibleTotal > 0n) {
+  // Only distribute if quorum reached AND countdown complete
+  if (quorumReached && countdownComplete && sharedPool > 0n && dbEligibleTotal > 0n) {
     // Use DB total for distribution (these are the users we can actually pay)
     // On-chain total is used for quorum check only
     for (const stake of eligibleStakes) {
@@ -155,7 +246,7 @@ export async function finalizeEpoch(): Promise<EpochResult> {
 
     console.log(`[EPOCH] Distributed ${totalDistributed} lamports to ${distributedTo} stakers (pool denominator: ${dbEligibleTotal})`);
 
-    // End current epoch and create new one (only when quorum reached)
+    // End current epoch and create new one
     const newEpochNumber = currentEpochNumber + 1;
 
     await db.run(
@@ -187,13 +278,14 @@ export async function finalizeEpoch(): Promise<EpochResult> {
       [newEpochNumber, nowIso, currentTreasuryBalance.toString()]
     );
 
-    // Update global state with new epoch
+    // Update global state - reset quorum_reached_at for new epoch
     await db.run(
       `UPDATE global_state
        SET current_epoch = ?,
            shared_pool_lamports = ?,
            greed_pot_lamports = ?,
            treasury_last_balance = ?,
+           quorum_reached_at = NULL,
            last_updated = ?
        WHERE id = 1`,
       [
@@ -218,7 +310,7 @@ export async function finalizeEpoch(): Promise<EpochResult> {
     };
   }
 
-  // Quorum not reached - just update pools and treasury balance, don't advance epoch
+  // Quorum not reached OR countdown not complete - just update pools and treasury balance
   await db.run(
     `UPDATE global_state
      SET shared_pool_lamports = ?,
@@ -240,7 +332,7 @@ export async function finalizeEpoch(): Promise<EpochResult> {
     sharedPoolAddition: sharedPoolAddition.toString(),
     greedPotAddition: greedPotAddition.toString(),
     totalEligibleStake: totalEligibleStake.toString(),
-    quorumReached: false,
+    quorumReached,
     distributed: false,
     distributedTo: 0,
     totalDistributed: '0'
@@ -255,10 +347,17 @@ export async function getEpochHistory(limit: number = 10): Promise<Epoch[]> {
   );
 }
 
-// Get time until next epoch
+// Get time until next epoch (countdown from when quorum was reached)
 export async function getTimeUntilNextEpoch(): Promise<number> {
-  const epochStart = await getEpochStartTime();
-  const elapsed = Date.now() - epochStart.getTime();
+  const state = await getGlobalState();
+
+  // If quorum not reached yet, return -1 to indicate no countdown
+  if (!state.quorum_reached_at) {
+    return -1;
+  }
+
+  const quorumTime = new Date(state.quorum_reached_at).getTime();
+  const elapsed = Date.now() - quorumTime;
   const remaining = config.epochDuration * 1000 - elapsed;
   return Math.max(0, remaining);
 }

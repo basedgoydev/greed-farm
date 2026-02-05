@@ -270,6 +270,7 @@ export interface GlobalState {
   greed_pot_lamports: number | bigint | string;
   total_staked: number | bigint | string;
   treasury_last_balance: number | bigint | string;
+  quorum_reached_at: string | null;
   last_updated: string;
 }
 
