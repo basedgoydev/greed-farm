@@ -254,7 +254,9 @@ export const Dashboard: FC = () => {
             <div className="text-right">
               <p className="text-xs text-[#556688] uppercase tracking-wider mb-1">Contract</p>
               <p className="text-sm text-israel-blue-light font-mono">
-                {process.env.NEXT_PUBLIC_TOKEN_MINT?.slice(0, 4) || 'Coming'}...{process.env.NEXT_PUBLIC_TOKEN_MINT?.slice(-4) || 'Soon'}
+                {process.env.NEXT_PUBLIC_TOKEN_MINT && process.env.NEXT_PUBLIC_TOKEN_MINT.length > 10
+                  ? `${process.env.NEXT_PUBLIC_TOKEN_MINT.slice(0, 4)}...${process.env.NEXT_PUBLIC_TOKEN_MINT.slice(-4)}`
+                  : 'Coming Soon'}
               </p>
             </div>
           </div>
