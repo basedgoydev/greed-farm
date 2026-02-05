@@ -38,10 +38,10 @@ import { PublicKey } from '@solana/web3.js';
 
 const router = Router();
 
-// Strict rate limits for sensitive endpoints
-const claimRateLimit = strictRateLimit(5, 60000); // 5 claims per minute
-const greedRateLimit = strictRateLimit(10, 60000); // 10 greed attempts per minute
-const stakeRateLimit = strictRateLimit(10, 60000); // 10 stake/unstake per minute
+// Strict rate limits for sensitive endpoints (configurable via env)
+const claimRateLimit = strictRateLimit(parseInt(process.env.RATE_LIMIT_CLAIM || '10'), 60000);
+const greedRateLimit = strictRateLimit(parseInt(process.env.RATE_LIMIT_GREED || '30'), 60000);
+const stakeRateLimit = strictRateLimit(parseInt(process.env.RATE_LIMIT_STAKE || '20'), 60000);
 
 // Used signatures cache to prevent replay attacks (with TTL cleanup)
 const usedSignatures = new Map<string, number>();
