@@ -193,12 +193,16 @@ export async function finalizeEpoch(): Promise<EpochResult> {
 
   // Check if countdown is complete
   let countdownComplete = false;
+
+  // After epoch 100, quorum requirements change - don't auto-continue
+  const isAutoEpochPhase = currentEpochNumber <= 100;
+
   if (quorumReached && state.quorum_reached_at) {
     const quorumTime = new Date(state.quorum_reached_at).getTime();
     const elapsed = now.getTime() - quorumTime;
     countdownComplete = elapsed >= config.epochDuration * 1000;
     console.log(`[EPOCH] Countdown: ${elapsed}ms elapsed, ${config.epochDuration * 1000}ms required, complete: ${countdownComplete}`);
-  } else if (quorumReached && !state.quorum_reached_at) {
+  } else if (quorumReached && !state.quorum_reached_at && isAutoEpochPhase) {
     // Quorum just reached - set timestamp and wait for countdown
     await db.run(
       'UPDATE global_state SET quorum_reached_at = ?, last_updated = ? WHERE id = 1',
@@ -278,14 +282,28 @@ export async function finalizeEpoch(): Promise<EpochResult> {
       [newEpochNumber, nowIso, currentTreasuryBalance.toString()]
     );
 
-    // Update global state - reset quorum_reached_at for new epoch
+    // Check if quorum is STILL met after distribution (for continuous epochs)
+    // If yes, immediately start next countdown instead of waiting
+    let nextQuorumReachedAt: string | null = null;
+    if (newEpochNumber <= 100) {
+      // Re-check quorum for next epoch
+      const nextQuorumThreshold = getQuorumThreshold(newEpochNumber);
+      const stillHasQuorum = totalEligibleStake >= nextQuorumThreshold;
+
+      if (stillHasQuorum) {
+        nextQuorumReachedAt = nowIso;
+        console.log(`[EPOCH] Quorum still met for epoch ${newEpochNumber}, starting next countdown immediately`);
+      }
+    }
+
+    // Update global state - set quorum_reached_at for next epoch if quorum still met
     await db.run(
       `UPDATE global_state
        SET current_epoch = ?,
            shared_pool_lamports = ?,
            greed_pot_lamports = ?,
            treasury_last_balance = ?,
-           quorum_reached_at = NULL,
+           quorum_reached_at = ?,
            last_updated = ?
        WHERE id = 1`,
       [
@@ -293,6 +311,7 @@ export async function finalizeEpoch(): Promise<EpochResult> {
         sharedPool.toString(),
         greedPot.toString(),
         currentTreasuryBalance.toString(),
+        nextQuorumReachedAt,
         nowIso
       ]
     );

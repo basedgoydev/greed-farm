@@ -42,17 +42,10 @@ async function runEpochFinalization() {
   }
 }
 
-// Calculate cron expression for epoch duration
+// Run every minute to check if countdown has completed
+// Distribution only happens when countdown is complete
 function getCronExpression(): string {
-  const minutes = Math.floor(config.epochDuration / 60);
-
-  if (minutes <= 0) {
-    return '* * * * *';
-  } else if (minutes < 60) {
-    return `*/${minutes} * * * *`;
-  } else {
-    return '0 * * * *';
-  }
+  return '* * * * *'; // Every minute
 }
 
 // Create and start the cron job
