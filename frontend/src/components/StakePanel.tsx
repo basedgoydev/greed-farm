@@ -4,10 +4,11 @@ import { FC, useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import {
-  getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
   getAccount,
   createTransferInstruction,
   createAssociatedTokenAccountInstruction,
+  TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
 import { api, UserInfo } from '@/lib/api';
 import { useCountdown } from '@/hooks/useCountdown';
@@ -47,8 +48,13 @@ export const StakePanel: FC<StakePanelProps> = ({
       if (!publicKey) return;
       try {
         const tokenMint = new PublicKey(TOKEN_MINT);
-        const tokenAccount = await getAssociatedTokenAddress(tokenMint, publicKey);
-        const account = await getAccount(connection, tokenAccount);
+        const tokenAccount = getAssociatedTokenAddressSync(
+          tokenMint,
+          publicKey,
+          false,
+          TOKEN_2022_PROGRAM_ID
+        );
+        const account = await getAccount(connection, tokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
         const decimals = parseInt(process.env.NEXT_PUBLIC_TOKEN_DECIMALS || '6');
         const balance = Number(account.amount) / 10 ** decimals;
         setWalletBalance(balance.toLocaleString());
@@ -67,8 +73,13 @@ export const StakePanel: FC<StakePanelProps> = ({
     if (!publicKey) return;
     try {
       const tokenMint = new PublicKey(TOKEN_MINT);
-      const tokenAccount = await getAssociatedTokenAddress(tokenMint, publicKey);
-      const account = await getAccount(connection, tokenAccount);
+      const tokenAccount = getAssociatedTokenAddressSync(
+        tokenMint,
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+      const account = await getAccount(connection, tokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
       const decimals = parseInt(process.env.NEXT_PUBLIC_TOKEN_DECIMALS || '6');
       const balance = Number(account.amount) / 10 ** decimals;
       setWalletBalance(balance.toLocaleString());
@@ -101,20 +112,21 @@ export const StakePanel: FC<StakePanelProps> = ({
         throw new Error(`Invalid TREASURY_WALLET: "${TREASURY_WALLET}" - ${(e as Error).message}`);
       }
 
-      const userTokenAccount = await getAssociatedTokenAddress(tokenMint, publicKey);
-      const treasuryTokenAccount = await getAssociatedTokenAddress(tokenMint, treasury);
+      const userTokenAccount = getAssociatedTokenAddressSync(tokenMint, publicKey, false, TOKEN_2022_PROGRAM_ID);
+      const treasuryTokenAccount = getAssociatedTokenAddressSync(tokenMint, treasury, false, TOKEN_2022_PROGRAM_ID);
 
       const transaction = new Transaction();
 
       try {
-        await getAccount(connection, treasuryTokenAccount);
+        await getAccount(connection, treasuryTokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
       } catch {
         transaction.add(
           createAssociatedTokenAccountInstruction(
             publicKey,
             treasuryTokenAccount,
             treasury,
-            tokenMint
+            tokenMint,
+            TOKEN_2022_PROGRAM_ID
           )
         );
       }
@@ -124,7 +136,9 @@ export const StakePanel: FC<StakePanelProps> = ({
           userTokenAccount,
           treasuryTokenAccount,
           publicKey,
-          amountTokens
+          amountTokens,
+          [],
+          TOKEN_2022_PROGRAM_ID
         )
       );
 
