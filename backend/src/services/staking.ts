@@ -53,7 +53,7 @@ export async function getActiveStake(userId: number): Promise<Stake | undefined>
 }
 
 // Get user's stake info with warmup status
-// Now syncs from on-chain program first
+// Prioritizes database (custodial staking) over on-chain
 export async function getStakeInfo(wallet: string): Promise<{
   staked: string;
   stakedAt: string | null;
@@ -61,7 +61,27 @@ export async function getStakeInfo(wallet: string): Promise<{
   warmupRemaining: number;
   eligibleAt: string | null;
 }> {
-  // Try to sync from on-chain first
+  // Check database first (custodial staking system)
+  const user = await db.get<User>('SELECT * FROM users WHERE wallet = ?', [wallet]);
+  if (user) {
+    const stake = await getActiveStake(user.id);
+    if (stake && toBigInt(stake.amount) > 0n) {
+      const stakedAt = new Date(stake.staked_at);
+      const isEligible = isWarmupComplete(stakedAt, config.warmupDuration);
+      const warmupEndsAt = new Date(stakedAt.getTime() + config.warmupDuration * 1000);
+      const warmupRemaining = Math.max(0, warmupEndsAt.getTime() - Date.now());
+
+      return {
+        staked: toBigInt(stake.amount).toString(),
+        stakedAt: stake.staked_at,
+        isEligible,
+        warmupRemaining,
+        eligibleAt: warmupEndsAt.toISOString()
+      };
+    }
+  }
+
+  // Fallback to on-chain (for future trustless staking)
   try {
     const programReady = await isPoolInitialized();
     if (programReady) {
@@ -82,55 +102,19 @@ export async function getStakeInfo(wallet: string): Promise<{
           warmupRemaining,
           eligibleAt: warmupEndsAt.toISOString()
         };
-      } else if (onChainStake && onChainStake.amount === 0n) {
-        // User has unstaked on-chain
-        return {
-          staked: '0',
-          stakedAt: null,
-          isEligible: false,
-          warmupRemaining: 0,
-          eligibleAt: null
-        };
       }
     }
   } catch (error) {
-    console.error('Error fetching on-chain stake, falling back to DB:', error);
+    console.error('Error fetching on-chain stake:', error);
   }
 
-  // Fallback to DB (for backwards compatibility or if program not deployed)
-  const user = await db.get<User>('SELECT * FROM users WHERE wallet = ?', [wallet]);
-  if (!user) {
-    return {
-      staked: '0',
-      stakedAt: null,
-      isEligible: false,
-      warmupRemaining: 0,
-      eligibleAt: null
-    };
-  }
-
-  const stake = await getActiveStake(user.id);
-  if (!stake) {
-    return {
-      staked: '0',
-      stakedAt: null,
-      isEligible: false,
-      warmupRemaining: 0,
-      eligibleAt: null
-    };
-  }
-
-  const stakedAt = new Date(stake.staked_at);
-  const isEligible = isWarmupComplete(stakedAt, config.warmupDuration);
-  const warmupEndsAt = new Date(stakedAt.getTime() + config.warmupDuration * 1000);
-  const warmupRemaining = Math.max(0, warmupEndsAt.getTime() - Date.now());
-
+  // No stake found
   return {
-    staked: toBigInt(stake.amount).toString(),
-    stakedAt: stake.staked_at,
-    isEligible,
-    warmupRemaining,
-    eligibleAt: warmupEndsAt.toISOString()
+    staked: '0',
+    stakedAt: null,
+    isEligible: false,
+    warmupRemaining: 0,
+    eligibleAt: null
   };
 }
 

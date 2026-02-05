@@ -763,6 +763,85 @@ router.post('/debug/sync-treasury', debugAuth, async (req: Request, res: Respons
   }
 });
 
+// GET /api/debug/stakes - Check all active stakes
+router.get('/debug/stakes', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const stakes = await db.all<{
+      id: number;
+      user_id: number;
+      wallet: string;
+      amount: string;
+      staked_at: string;
+      is_active: boolean;
+    }>(
+      `SELECT s.id, s.user_id, u.wallet, s.amount, s.staked_at, s.is_active
+       FROM stakes s
+       JOIN users u ON s.user_id = u.id
+       ORDER BY s.staked_at DESC
+       LIMIT 50`
+    );
+
+    const decimals = config.tokenDecimals;
+    const formatted = stakes.map(s => ({
+      ...s,
+      amountFormatted: (Number(toBigInt(s.amount)) / (10 ** decimals)).toLocaleString()
+    }));
+
+    res.json({
+      count: stakes.length,
+      stakes: formatted
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/debug/user-stake/:wallet - Check specific user's stake
+router.get('/debug/user-stake/:wallet', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { wallet } = req.params;
+
+    // Get DB stake
+    const user = await db.get<{ id: number; wallet: string }>(
+      'SELECT id, wallet FROM users WHERE wallet = ?',
+      [wallet]
+    );
+
+    let dbStake = null;
+    if (user) {
+      dbStake = await db.get<{
+        amount: string;
+        staked_at: string;
+        is_active: boolean;
+      }>(
+        'SELECT amount, staked_at, is_active FROM stakes WHERE user_id = ? AND is_active = TRUE',
+        [user.id]
+      );
+    }
+
+    // Get on-chain stake
+    let onChainStake = null;
+    try {
+      const initialized = await isPoolInitialized();
+      if (initialized) {
+        const { fetchUserStake } = await import('../utils/staking-program.js');
+        onChainStake = await fetchUserStake(wallet);
+      }
+    } catch (e: any) {
+      onChainStake = { error: e.message };
+    }
+
+    res.json({
+      wallet,
+      user: user || null,
+      dbStake: dbStake || null,
+      onChainStake
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/debug - Debug endpoint to check config
 router.get('/debug', debugAuth, async (req: Request, res: Response) => {
   try {

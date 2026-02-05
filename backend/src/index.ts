@@ -66,7 +66,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(rateLimit(100, 60000));
+app.use(rateLimit(300, 60000)); // 300 requests per minute
 
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
