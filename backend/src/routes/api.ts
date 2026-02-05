@@ -1196,6 +1196,65 @@ router.post('/debug/migrate-all-custodial', debugAuth, async (req: Request, res:
   }
 });
 
+// POST /api/debug/migrate-wallet - Migrate a specific wallet
+router.post('/debug/migrate-wallet', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { wallet, amount } = req.body;
+    if (!wallet || !amount) {
+      return res.status(400).json({ error: 'Missing wallet or amount' });
+    }
+
+    const { transferTokensToUser } = await import('../utils/solana.js');
+    const amountBigInt = toBigInt(amount);
+
+    const signature = await transferTokensToUser(wallet, amountBigInt);
+
+    res.json({
+      success: true,
+      wallet,
+      amount: amount.toString(),
+      signature
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/migrate-wallet:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/debug/treasury-tokens - Check treasury token balance
+router.get('/debug/treasury-tokens', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { getTreasuryPublicKey, connection } = await import('../utils/solana.js');
+    const { getAssociatedTokenAddressSync, getAccount, TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
+    const { PublicKey } = await import('@solana/web3.js');
+
+    const treasury = getTreasuryPublicKey();
+    const tokenMint = new PublicKey(config.tokenMint);
+
+    const treasuryTokenAccount = getAssociatedTokenAddressSync(
+      tokenMint,
+      treasury,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
+    const account = await getAccount(connection, treasuryTokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
+    const balance = account.amount;
+    const decimals = config.tokenDecimals;
+    const formatted = (Number(balance) / 10 ** decimals).toLocaleString();
+
+    res.json({
+      treasuryWallet: treasury.toBase58(),
+      tokenAccount: treasuryTokenAccount.toBase58(),
+      balance: balance.toString(),
+      formatted: `${formatted} tokens`
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/treasury-tokens:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/debug - Debug endpoint to check config
 router.get('/debug', debugAuth, async (req: Request, res: Response) => {
   try {
