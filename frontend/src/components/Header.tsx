@@ -5,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Logo } from './Logo';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://greed-farm.onrender.com';
 
 export const Header: FC = () => {
   const { connected, publicKey } = useWallet();
@@ -14,7 +14,7 @@ export const Header: FC = () => {
   useEffect(() => {
     const fetchGoyCount = async () => {
       try {
-        const res = await fetch(`${API_URL}/status`);
+        const res = await fetch(`${API_URL}/api/status`);
         if (res.ok) {
           const data = await res.json();
           setGoyCount(data.stakerCount || 0);
