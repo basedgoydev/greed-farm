@@ -1,0 +1,21 @@
+{
+  "name": "greed-farm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solana Memecoin Staking Game",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm start",
+    "db:migrate": "cd backend && npm run db:migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

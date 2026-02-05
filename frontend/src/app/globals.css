@@ -1,0 +1,479 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Israel Flag Colors */
+  --israel-blue: #0038b8;
+  --israel-blue-dark: #002776;
+  --israel-blue-light: #4d7cc7;
+  --israel-blue-glow: #5588dd;
+  --israel-white: #ffffff;
+
+  /* Accent colors */
+  --accent-gold: #d4af37;
+  --accent-red: #dc3545;
+  --accent-green: #28a745;
+
+  /* Dark theme */
+  --bg-dark: #070b14;
+  --bg-card: #0d1525;
+  --bg-card-hover: #111c30;
+  --border-color: #1a2a4a;
+  --border-glow: #0038b8;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #8899bb;
+  --text-muted: #556688;
+
+  /* Voxel colors */
+  --voxel-shadow: rgba(0, 39, 118, 0.6);
+  --voxel-highlight: rgba(77, 124, 199, 0.8);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: var(--font-pixel-body), 'VT323', monospace;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* Pixel font classes */
+.font-pixel {
+  font-family: var(--font-pixel), 'Press Start 2P', cursive;
+}
+
+.font-pixel-body {
+  font-family: var(--font-pixel-body), 'VT323', monospace;
+}
+
+/* Override headings with pixel font */
+h1, h2, h3, .text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-5xl {
+  font-family: var(--font-pixel), 'Press Start 2P', cursive;
+  letter-spacing: -0.5px;
+  line-height: 1.4;
+}
+
+/* Smaller text sizes for pixel font headings */
+h1, .text-5xl { font-size: 1.5rem; }
+h2, .text-4xl { font-size: 1.25rem; }
+h3, .text-3xl { font-size: 1rem; }
+.text-2xl { font-size: 0.875rem; }
+.text-xl { font-size: 0.75rem; }
+.text-lg { font-size: 0.65rem; }
+
+/* Star of David Background Pattern */
+.bg-star-pattern {
+  position: relative;
+  background-color: var(--bg-dark);
+}
+
+.bg-star-pattern::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/images/star-of-david.png");
+  background-size: 70px 70px;
+  background-repeat: repeat;
+  opacity: 0.03;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Animated Star Pattern */
+.bg-star-animated {
+  position: relative;
+  background-color: var(--bg-dark);
+}
+
+.bg-star-animated::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/images/star-of-david.png");
+  background-size: 70px 70px;
+  background-repeat: repeat;
+  opacity: 0.04;
+  z-index: 0;
+  pointer-events: none;
+  animation: star-drift 50s linear infinite;
+}
+
+@keyframes star-drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 70px 70px; }
+}
+
+/* Glowing text effects */
+.text-glow-blue {
+  text-shadow: 0 0 10px rgba(0, 56, 184, 0.8), 0 0 40px rgba(0, 56, 184, 0.4), 0 0 80px rgba(0, 56, 184, 0.2);
+}
+
+.text-glow-white {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5), 0 0 30px rgba(255, 255, 255, 0.3);
+}
+
+.text-glow-gold {
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.6), 0 0 40px rgba(212, 175, 55, 0.3);
+}
+
+/* Card styles - Isometric voxel aesthetic */
+.card-greed {
+  background: linear-gradient(180deg, var(--bg-card) 0%, #0a101d 100%);
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow:
+    6px 6px 0 #0d1220,
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: all 0.15s ease;
+}
+
+.card-greed:hover {
+  border-color: var(--israel-blue);
+  box-shadow:
+    4px 4px 0 #0d1220,
+    0 0 20px rgba(0, 56, 184, 0.15);
+  transform: translate(2px, 2px);
+}
+
+.card-greed-highlight {
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(0, 56, 184, 0.15) 100%);
+  border: 2px solid var(--israel-blue);
+  border-radius: 4px;
+  box-shadow:
+    8px 8px 0 #0d1220,
+    0 0 40px rgba(0, 56, 184, 0.2),
+    inset 0 1px 0 rgba(77, 124, 199, 0.2);
+}
+
+/* Button styles - Isometric voxel aesthetic */
+.btn-primary {
+  background: linear-gradient(180deg, var(--israel-blue-light) 0%, var(--israel-blue) 50%, var(--israel-blue-dark) 100%);
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  transition: all 0.1s ease;
+  border: none;
+  box-shadow:
+    4px 4px 0 #001a5c,
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-primary:hover:not(:disabled) {
+  box-shadow:
+    2px 2px 0 #001a5c,
+    0 0 15px rgba(0, 56, 184, 0.4);
+  transform: translate(2px, 2px);
+}
+
+.btn-primary:disabled {
+  background: linear-gradient(180deg, #1a2a4a 0%, #0d1525 100%);
+  color: #556688;
+  cursor: not-allowed;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--israel-blue-light);
+  font-weight: 600;
+  border: 1px solid var(--israel-blue);
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(0, 56, 184, 0.1);
+  box-shadow: 0 0 20px rgba(0, 56, 184, 0.2);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545 0%, #a71d2a 100%);
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 40px rgba(220, 53, 69, 0.4);
+}
+
+.btn-gold {
+  background: linear-gradient(180deg, #f0d060 0%, #d4af37 50%, #aa8a2e 100%);
+  color: #0a0f1a;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  transition: all 0.1s ease;
+  border: none;
+  box-shadow:
+    4px 4px 0 #6a5a1e,
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn-gold:hover:not(:disabled) {
+  box-shadow:
+    2px 2px 0 #6a5a1e,
+    0 0 15px rgba(212, 175, 55, 0.5);
+  transform: translate(2px, 2px);
+}
+
+/* Stat box - Isometric voxel style */
+.stat-box {
+  background: linear-gradient(180deg, rgba(0, 56, 184, 0.08) 0%, rgba(0, 56, 184, 0.02) 100%);
+  border: 2px solid rgba(0, 56, 184, 0.25);
+  border-radius: 4px;
+  padding: 1rem;
+  box-shadow: 3px 3px 0 rgba(0, 20, 60, 0.3);
+}
+
+.stat-box-gold {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.08) 0%, rgba(212, 175, 55, 0.02) 100%);
+  border: 2px solid rgba(212, 175, 55, 0.25);
+  box-shadow: 3px 3px 0 rgba(100, 80, 20, 0.3);
+}
+
+/* Progress bar - Isometric voxel style */
+.progress-bar-bg {
+  background: rgba(0, 56, 184, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 2px solid rgba(0, 56, 184, 0.2);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.progress-bar-fill {
+  background: linear-gradient(180deg, var(--israel-blue-light) 0%, var(--israel-blue) 100%);
+  border-radius: 0;
+  transition: width 0.5s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.progress-bar-fill-gold {
+  background: linear-gradient(180deg, #f0d060 0%, #d4af37 100%);
+}
+
+/* Input styles */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.input-greed {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-color);
+  color: white;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.input-greed:focus {
+  outline: none;
+  border-color: var(--israel-blue);
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(0, 56, 184, 0.2);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--israel-blue);
+}
+
+/* Wallet adapter overrides - Isometric voxel style */
+.wallet-adapter-button {
+  background: linear-gradient(180deg, var(--israel-blue-light) 0%, var(--israel-blue) 50%, var(--israel-blue-dark) 100%) !important;
+  color: white !important;
+  border-radius: 4px !important;
+  font-weight: 700 !important;
+  height: 44px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  font-size: 0.875rem !important;
+  box-shadow: 4px 4px 0 #001a5c !important;
+  transition: all 0.1s ease !important;
+}
+
+.wallet-adapter-button:hover {
+  background: linear-gradient(180deg, #6090d0 0%, var(--israel-blue-light) 50%, var(--israel-blue) 100%) !important;
+  box-shadow: 2px 2px 0 #001a5c !important;
+  transform: translate(2px, 2px) !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgba(7, 11, 20, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+.wallet-adapter-modal-container {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 16px !important;
+}
+
+.wallet-adapter-modal-title {
+  color: white !important;
+}
+
+.wallet-adapter-modal-list li {
+  background: rgba(0, 56, 184, 0.05) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 12px !important;
+}
+
+.wallet-adapter-modal-list li:hover {
+  background: rgba(0, 56, 184, 0.1) !important;
+  border-color: var(--israel-blue) !important;
+}
+
+/* Animations */
+@keyframes pulse-blue {
+  0%, 100% { opacity: 1; box-shadow: 0 0 20px rgba(0, 56, 184, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 40px rgba(0, 56, 184, 0.6); }
+}
+
+.animate-pulse-blue {
+  animation: pulse-blue 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Logo text style */
+.logo-text {
+  font-weight: 800;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #ffffff 0%, #4d7cc7 50%, #0038b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Divider */
+.divider-blue {
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--israel-blue) 50%, transparent 100%);
+}
+
+/* Tag/badge - Isometric voxel style */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.tag-blue {
+  background: linear-gradient(180deg, rgba(0, 56, 184, 0.2) 0%, rgba(0, 56, 184, 0.1) 100%);
+  color: var(--israel-blue-light);
+  border: 1px solid rgba(0, 56, 184, 0.4);
+}
+
+.tag-gold {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.2) 0%, rgba(212, 175, 55, 0.1) 100%);
+  color: #d4af37;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+}
+
+.tag-green {
+  background: linear-gradient(180deg, rgba(40, 167, 69, 0.2) 0%, rgba(40, 167, 69, 0.1) 100%);
+  color: #28a745;
+  border: 1px solid rgba(40, 167, 69, 0.4);
+}
+
+/* ============================================
+   VOXEL AESTHETIC STYLES
+   Isometric 3D style matching the voxel character
+   ============================================ */
+
+/* Pixelated image rendering */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* Isometric voxel shadows - matching character's shadow angle */
+.drop-shadow-voxel {
+  filter: drop-shadow(3px 3px 0 #1a1a2e)
+          drop-shadow(5px 5px 0 rgba(0, 0, 0, 0.4));
+}
+
+.drop-shadow-voxel-lg {
+  filter: drop-shadow(4px 4px 0 #1a1a2e)
+          drop-shadow(8px 8px 0 rgba(0, 0, 0, 0.5))
+          drop-shadow(0 0 30px var(--israel-blue-glow));
+}
+
+/* Voxel icon container */
+.voxel-icon {
+  transition: transform 0.2s ease;
+}
+
+.voxel-icon:hover {
+  transform: scale(1.1) rotate(-3deg);
+}
+
+/* Voxel button style - isometric press effect */
+.btn-voxel {
+  position: relative;
+  box-shadow:
+    4px 4px 0 #1a1a2e,
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.1s ease;
+}
+
+.btn-voxel:hover:not(:disabled) {
+  box-shadow:
+    2px 2px 0 #1a1a2e,
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transform: translate(2px, 2px);
+}
+
+.btn-voxel:active:not(:disabled) {
+  box-shadow:
+    0 0 0 #1a1a2e,
+    inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  transform: translate(4px, 4px);
+}

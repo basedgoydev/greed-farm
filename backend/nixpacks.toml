@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python3", "gcc", "gnumake", "nodejs_20"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build", "npm run db:migrate"]
+
+[start]
+cmd = "npm start"
