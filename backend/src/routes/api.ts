@@ -1002,6 +1002,101 @@ router.get('/debug/user-stake/:wallet', debugAuth, async (req: Request, res: Res
   }
 });
 
+// POST /api/debug/migrate-all-custodial - Return tokens to ALL custodial stakers
+router.post('/debug/migrate-all-custodial', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { transferTokensToUser } = await import('../utils/solana.js');
+
+    // Get all active custodial stakes
+    const stakes = await db.all<{
+      stake_id: number;
+      user_id: number;
+      wallet: string;
+      amount: string;
+    }>(
+      `SELECT s.id as stake_id, s.user_id, u.wallet, s.amount
+       FROM stakes s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.is_active = TRUE AND CAST(s.amount AS BIGINT) > 0`
+    );
+
+    if (stakes.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No custodial stakes to migrate',
+        migrated: []
+      });
+    }
+
+    const migrated: { wallet: string; amount: string; signature: string }[] = [];
+    const failed: { wallet: string; amount: string; error: string }[] = [];
+
+    for (const stake of stakes) {
+      const amount = toBigInt(stake.amount);
+
+      try {
+        // Transfer tokens back to user
+        const signature = await transferTokensToUser(stake.wallet, amount);
+
+        // Mark stake as migrated
+        const now = new Date().toISOString();
+        await db.run(
+          'UPDATE stakes SET is_active = FALSE, unstaked_at = ? WHERE id = ?',
+          [now, stake.stake_id]
+        );
+
+        // Log the migration
+        await db.run(
+          'INSERT INTO transactions (tx_id, user_id, action, amount_lamports, status, solana_signature, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [
+            `migrate-admin-${Date.now()}-${stake.user_id}`,
+            stake.user_id,
+            'migrate',
+            amount.toString(),
+            'completed',
+            signature,
+            now
+          ]
+        );
+
+        migrated.push({
+          wallet: stake.wallet,
+          amount: amount.toString(),
+          signature
+        });
+
+        console.log(`[MIGRATE] Returned ${amount} tokens to ${stake.wallet}`);
+      } catch (error: any) {
+        console.error(`[MIGRATE] Failed for ${stake.wallet}:`, error);
+        failed.push({
+          wallet: stake.wallet,
+          amount: amount.toString(),
+          error: error.message
+        });
+      }
+    }
+
+    // Update global total staked
+    const totalResult = await db.get<{ total: string }>(
+      'SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total FROM stakes WHERE is_active = TRUE'
+    );
+    await db.run(
+      'UPDATE global_state SET total_staked = ?, last_updated = ? WHERE id = 1',
+      [totalResult?.total || '0', new Date().toISOString()]
+    );
+
+    res.json({
+      success: true,
+      message: `Migrated ${migrated.length} stakes, ${failed.length} failed`,
+      migrated,
+      failed
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/migrate-all-custodial:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/debug - Debug endpoint to check config
 router.get('/debug', debugAuth, async (req: Request, res: Response) => {
   try {
