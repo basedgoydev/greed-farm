@@ -5,8 +5,7 @@ import {
   safeAdd,
   safeSub,
   percentage,
-  calculateShare,
-  isQuorumReached
+  calculateShare
 } from '../utils/math.js';
 import { getEligibleStakes, getTotalEligibleStake } from './staking.js';
 import { fetchTotalStaked, isPoolInitialized } from '../utils/staking-program.js';
@@ -83,16 +82,33 @@ export async function finalizeEpoch(): Promise<EpochResult> {
   let sharedPool = safeAdd(toBigInt(state.shared_pool_lamports), sharedPoolAddition);
   const greedPot = safeAdd(toBigInt(state.greed_pot_lamports), greedPotAddition);
 
-  // Get eligible stakes (past warmup)
-  const eligibleStakes = await getEligibleStakes();
-  const totalEligibleStake = eligibleStakes.reduce((sum, s) => safeAdd(sum, s.amount), 0n);
+  // Get eligible stakes (past warmup) - check on-chain first
+  let totalEligibleStake = 0n;
+  let eligibleStakes: Array<{ userId: number; wallet: string; amount: bigint }> = [];
 
-  // Check quorum
-  const quorumReached = isQuorumReached(
-    totalEligibleStake,
-    config.totalTokenSupply,
-    getQuorumPercentage(currentEpochNumber)
-  );
+  try {
+    const poolReady = await isPoolInitialized();
+    if (poolReady) {
+      totalEligibleStake = await fetchTotalStaked();
+    }
+  } catch (error) {
+    console.error('[EPOCH] Error fetching on-chain total:', error);
+  }
+
+  // Get DB eligible stakes for distribution (these are synced from on-chain)
+  eligibleStakes = await getEligibleStakes();
+  const dbEligibleTotal = eligibleStakes.reduce((sum, s) => safeAdd(sum, s.amount), 0n);
+
+  // Use the higher of on-chain or DB total for quorum check
+  if (dbEligibleTotal > totalEligibleStake) {
+    totalEligibleStake = dbEligibleTotal;
+  }
+
+  // Check quorum using corrected threshold (includes decimals)
+  const quorumThreshold = getQuorumThreshold(currentEpochNumber);
+  const quorumReached = totalEligibleStake >= quorumThreshold;
+
+  console.log(`[EPOCH] Eligible stake: ${totalEligibleStake}, Threshold: ${quorumThreshold}, Quorum reached: ${quorumReached}`);
 
   let distributed = false;
   let distributedTo = 0;
