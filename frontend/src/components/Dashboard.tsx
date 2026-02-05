@@ -104,9 +104,9 @@ export const Dashboard: FC = () => {
         {/* Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard
-            title="Treasury"
-            value={`${status?.sharedPool?.pending || '0'} SOL`}
-            subtitle="Next distribution"
+            title="Next Distribution"
+            value={`${status?.treasury?.sol || '0'} SOL`}
+            subtitle="After quorum reached"
             variant="blue"
           />
           <StatCard
