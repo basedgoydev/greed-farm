@@ -108,16 +108,18 @@ export async function finalizeEpoch(): Promise<EpochResult> {
   const quorumThreshold = getQuorumThreshold(currentEpochNumber);
   const quorumReached = totalEligibleStake >= quorumThreshold;
 
-  console.log(`[EPOCH] Eligible stake: ${totalEligibleStake}, Threshold: ${quorumThreshold}, Quorum reached: ${quorumReached}`);
+  console.log(`[EPOCH] On-chain stake: ${totalEligibleStake}, DB eligible: ${dbEligibleTotal}, Threshold: ${quorumThreshold}, Quorum: ${quorumReached}`);
 
   let distributed = false;
   let distributedTo = 0;
   let totalDistributed = 0n;
 
   // Only distribute and advance epoch if quorum is reached
-  if (quorumReached && sharedPool > 0n && totalEligibleStake > 0n) {
+  if (quorumReached && sharedPool > 0n && dbEligibleTotal > 0n) {
+    // Use DB total for distribution (these are the users we can actually pay)
+    // On-chain total is used for quorum check only
     for (const stake of eligibleStakes) {
-      const reward = calculateShare(sharedPool, stake.amount, totalEligibleStake);
+      const reward = calculateShare(sharedPool, stake.amount, dbEligibleTotal);
 
       if (reward > 0n) {
         // Credit reward to user's claimable balance
@@ -144,6 +146,8 @@ export async function finalizeEpoch(): Promise<EpochResult> {
     // Clear shared pool after distribution
     sharedPool = safeSub(sharedPool, totalDistributed);
     distributed = true;
+
+    console.log(`[EPOCH] Distributed ${totalDistributed} lamports to ${distributedTo} stakers (pool denominator: ${dbEligibleTotal})`);
 
     // End current epoch and create new one (only when quorum reached)
     const newEpochNumber = currentEpochNumber + 1;
