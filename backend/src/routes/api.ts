@@ -670,6 +670,65 @@ router.get('/debug/distributions', debugAuth, async (req: Request, res: Response
   }
 });
 
+// POST /api/debug/return-to-pool - Return a user's claimable balance to shared pool for redistribution
+router.post('/debug/return-to-pool', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { wallet } = req.body;
+
+    if (!wallet) {
+      return res.status(400).json({ error: 'Missing wallet' });
+    }
+
+    const user = await db.get<{ id: number; claimable_lamports: string }>(
+      'SELECT id, claimable_lamports FROM users WHERE wallet = ?',
+      [wallet]
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const claimable = toBigInt(user.claimable_lamports);
+    if (claimable <= 0n) {
+      return res.json({
+        success: true,
+        message: 'User has no claimable balance to return',
+        returned: '0'
+      });
+    }
+
+    // Reset user's claimable to 0
+    await db.run(
+      'UPDATE users SET claimable_lamports = 0 WHERE id = ?',
+      [user.id]
+    );
+
+    // Add the amount back to shared pool
+    const state = await db.get<{ shared_pool_lamports: string }>(
+      'SELECT shared_pool_lamports FROM global_state WHERE id = 1'
+    );
+    const currentPool = toBigInt(state?.shared_pool_lamports || 0);
+    const newPool = currentPool + claimable;
+
+    await db.run(
+      'UPDATE global_state SET shared_pool_lamports = ?, last_updated = ? WHERE id = 1',
+      [newPool.toString(), new Date().toISOString()]
+    );
+
+    res.json({
+      success: true,
+      message: `Returned ${(Number(claimable) / 1e9).toFixed(4)} SOL to shared pool`,
+      wallet,
+      returnedLamports: claimable.toString(),
+      returnedSol: (Number(claimable) / 1e9).toFixed(4),
+      newPoolLamports: newPool.toString(),
+      newPoolSol: (Number(newPool) / 1e9).toFixed(4)
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/debug/credit-user - Directly credit a user's claimable balance
 router.post('/debug/credit-user', debugAuth, async (req: Request, res: Response) => {
   try {
