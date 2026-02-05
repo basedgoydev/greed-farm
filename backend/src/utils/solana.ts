@@ -9,9 +9,12 @@ import {
 } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
   getAccount,
   createTransferInstruction,
-  TOKEN_PROGRAM_ID
+  createAssociatedTokenAccountInstruction,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -117,7 +120,8 @@ export async function transferSolToUser(
   return signature;
 }
 
-// Transfer tokens from treasury to user (for unstaking)
+// Transfer tokens from treasury to user (for unstaking/migration)
+// Supports Token-2022
 export async function transferTokensToUser(
   recipientAddress: string,
   amount: bigint
@@ -126,16 +130,47 @@ export async function transferTokensToUser(
   const recipient = new PublicKey(recipientAddress);
   const tokenMint = getTokenMint();
 
-  // Get token accounts
-  const treasuryTokenAccount = await getAssociatedTokenAddress(tokenMint, treasury.publicKey);
-  const recipientTokenAccount = await getAssociatedTokenAddress(tokenMint, recipient);
+  // Get token accounts using Token-2022 program
+  const treasuryTokenAccount = getAssociatedTokenAddressSync(
+    tokenMint,
+    treasury.publicKey,
+    false,
+    TOKEN_2022_PROGRAM_ID
+  );
+  const recipientTokenAccount = getAssociatedTokenAddressSync(
+    tokenMint,
+    recipient,
+    false,
+    TOKEN_2022_PROGRAM_ID
+  );
 
-  const transaction = new Transaction().add(
+  const transaction = new Transaction();
+
+  // Check if recipient token account exists, create if not
+  try {
+    await getAccount(connection, recipientTokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
+  } catch {
+    // Account doesn't exist, create it
+    transaction.add(
+      createAssociatedTokenAccountInstruction(
+        treasury.publicKey,
+        recipientTokenAccount,
+        recipient,
+        tokenMint,
+        TOKEN_2022_PROGRAM_ID
+      )
+    );
+  }
+
+  // Add transfer instruction
+  transaction.add(
     createTransferInstruction(
       treasuryTokenAccount,
       recipientTokenAccount,
       treasury.publicKey,
-      amount
+      amount,
+      [],
+      TOKEN_2022_PROGRAM_ID
     )
   );
 

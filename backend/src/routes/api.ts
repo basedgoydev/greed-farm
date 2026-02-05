@@ -315,6 +315,104 @@ router.post('/unstake', stakeRateLimit, validateWallet, requireWalletSignature, 
   }
 });
 
+// POST /api/migrate-stake - Return custodial tokens so user can restake on-chain (requires wallet signature)
+router.post('/migrate-stake', stakeRateLimit, validateWallet, requireWalletSignature, async (req: Request, res: Response) => {
+  try {
+    const { wallet } = req.body;
+
+    // Find user and their custodial stake
+    const user = await db.get<{ id: number; wallet: string }>(
+      'SELECT id, wallet FROM users WHERE wallet = ?',
+      [wallet]
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get active custodial stake
+    const stake = await db.get<{ id: number; amount: string; staked_at: string }>(
+      'SELECT id, amount, staked_at FROM stakes WHERE user_id = ? AND is_active = TRUE',
+      [user.id]
+    );
+
+    if (!stake) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active custodial stake found to migrate'
+      });
+    }
+
+    const amount = toBigInt(stake.amount);
+    if (amount <= 0n) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stake amount is zero'
+      });
+    }
+
+    // Transfer tokens from treasury back to user
+    let signature: string;
+    try {
+      const { transferTokensToUser } = await import('../utils/solana.js');
+      signature = await transferTokensToUser(wallet, amount);
+    } catch (error: any) {
+      console.error('Token transfer failed:', error);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to transfer tokens: ${error.message}`
+      });
+    }
+
+    // Mark stake as migrated (inactive)
+    const now = new Date().toISOString();
+    await db.run(
+      'UPDATE stakes SET is_active = FALSE, unstaked_at = ? WHERE id = ?',
+      [now, stake.id]
+    );
+
+    // Update global total staked
+    const state = await db.get<{ total_staked: string }>('SELECT total_staked FROM global_state WHERE id = 1');
+    const currentTotal = toBigInt(state?.total_staked || 0);
+    const newTotal = currentTotal > amount ? currentTotal - amount : 0n;
+    await db.run(
+      'UPDATE global_state SET total_staked = ?, last_updated = ? WHERE id = 1',
+      [newTotal.toString(), now]
+    );
+
+    // Log the migration
+    await db.run(
+      'INSERT INTO transactions (tx_id, user_id, action, amount_lamports, status, solana_signature, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        `migrate-${Date.now()}`,
+        user.id,
+        'migrate',
+        amount.toString(),
+        'completed',
+        signature,
+        now
+      ]
+    );
+
+    const decimals = config.tokenDecimals;
+    const formattedAmount = (Number(amount) / 10 ** decimals).toLocaleString();
+
+    res.json({
+      success: true,
+      message: `Migrated ${formattedAmount} tokens back to your wallet. You can now stake them on-chain.`,
+      amount: amount.toString(),
+      formattedAmount,
+      signature
+    });
+  } catch (error) {
+    console.error('Error in /migrate-stake:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/claim - Claim SOL rewards (requires wallet signature)
 router.post('/claim', claimRateLimit, validateWallet, requireWalletSignature, async (req: Request, res: Response) => {
   try {
