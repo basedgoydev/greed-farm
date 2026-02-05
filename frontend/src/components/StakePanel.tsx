@@ -2,20 +2,17 @@
 
 import { FC, useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import {
   getAssociatedTokenAddressSync,
   getAccount,
-  createTransferInstruction,
-  createAssociatedTokenAccountInstruction,
   TOKEN_2022_PROGRAM_ID,
 } from '@solana/spl-token';
 import { api, UserInfo } from '@/lib/api';
 import { useCountdown } from '@/hooks/useCountdown';
-import bs58 from 'bs58';
+import { useStakingProgram } from '@/hooks/useStakingProgram';
 
-const TREASURY_WALLET = process.env.NEXT_PUBLIC_TREASURY_WALLET || 'HP2QViWXzNvhe36ju7bsFFpwUhMqm9vFEEMtDggJe66G';
-const TOKEN_MINT = process.env.NEXT_PUBLIC_TOKEN_MINT || 'Few5c3UE7gjeWkqsFMtzPGh2TCmaiN7Kg6ohoN6pc4ae';
+const TOKEN_MINT = process.env.NEXT_PUBLIC_TOKEN_MINT || 'GvZV8aDreRfBLdjXr3iJ2hLS42pdmD8289KksFLTpump';
 
 interface StakePanelProps {
   userInfo: UserInfo | null;
@@ -28,8 +25,9 @@ export const StakePanel: FC<StakePanelProps> = ({
   warmupDuration,
   onAction,
 }) => {
-  const { publicKey, sendTransaction, signMessage } = useWallet();
+  const { publicKey } = useWallet();
   const { connection } = useConnection();
+  const { stake: stakeOnChain, unstake: unstakeOnChain, loading: programLoading, error: programError } = useStakingProgram();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,64 +95,16 @@ export const StakePanel: FC<StakePanelProps> = ({
       const decimals = parseInt(process.env.NEXT_PUBLIC_TOKEN_DECIMALS || '6');
       const amountTokens = BigInt(Math.floor(parseFloat(amount) * 10 ** decimals));
 
-      let tokenMint: PublicKey;
-      let treasury: PublicKey;
+      // Stake on-chain via the program
+      const signature = await stakeOnChain(amountTokens);
 
-      try {
-        tokenMint = new PublicKey(TOKEN_MINT.trim());
-      } catch (e) {
-        throw new Error(`Invalid TOKEN_MINT: "${TOKEN_MINT}" - ${(e as Error).message}`);
-      }
-
-      try {
-        treasury = new PublicKey(TREASURY_WALLET.trim());
-      } catch (e) {
-        throw new Error(`Invalid TREASURY_WALLET: "${TREASURY_WALLET}" - ${(e as Error).message}`);
-      }
-
-      const userTokenAccount = getAssociatedTokenAddressSync(tokenMint, publicKey, false, TOKEN_2022_PROGRAM_ID);
-      const treasuryTokenAccount = getAssociatedTokenAddressSync(tokenMint, treasury, false, TOKEN_2022_PROGRAM_ID);
-
-      const transaction = new Transaction();
-
-      try {
-        await getAccount(connection, treasuryTokenAccount, 'confirmed', TOKEN_2022_PROGRAM_ID);
-      } catch {
-        transaction.add(
-          createAssociatedTokenAccountInstruction(
-            publicKey,
-            treasuryTokenAccount,
-            treasury,
-            tokenMint,
-            TOKEN_2022_PROGRAM_ID
-          )
-        );
-      }
-
-      transaction.add(
-        createTransferInstruction(
-          userTokenAccount,
-          treasuryTokenAccount,
-          publicKey,
-          amountTokens,
-          [],
-          TOKEN_2022_PROGRAM_ID
-        )
-      );
-
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = publicKey;
-
-      const signature = await sendTransaction(transaction, connection);
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      const result = await api.stake(publicKey.toBase58(), amountTokens.toString(), signature);
-      if (result.success) {
+      if (signature) {
+        console.log('Staked on-chain, signature:', signature);
         setAmount('');
-        onAction();
+        // Refresh to get updated stake info from backend (which syncs from chain)
+        setTimeout(() => onAction(), 2000); // Wait for chain confirmation
       } else {
-        setError(result.message);
+        setError(programError || 'Failed to stake on-chain');
       }
     } catch (err) {
       setError((err as Error).message);
@@ -164,24 +114,19 @@ export const StakePanel: FC<StakePanelProps> = ({
   };
 
   const handleUnstake = async () => {
-    if (!publicKey || !signMessage) return;
+    if (!publicKey) return;
     setLoading(true);
     setError(null);
     try {
-      const message = `greed-farm:unstake:${publicKey.toBase58()}:${Date.now()}`;
-      const messageBytes = new TextEncoder().encode(message);
-      const signatureBytes = await signMessage(messageBytes);
-      const signature = bs58.encode(signatureBytes);
+      // Unstake on-chain via the program
+      const signature = await unstakeOnChain();
 
-      const result = await api.unstake({
-        wallet: publicKey.toBase58(),
-        message,
-        signature,
-      });
-      if (result.success) {
-        onAction();
+      if (signature) {
+        console.log('Unstaked on-chain, signature:', signature);
+        // Refresh to get updated stake info
+        setTimeout(() => onAction(), 2000);
       } else {
-        setError(result.message);
+        setError(programError || 'Failed to unstake on-chain');
       }
     } catch (err) {
       setError((err as Error).message);
@@ -195,6 +140,8 @@ export const StakePanel: FC<StakePanelProps> = ({
     const value = Number(stakedAmount) / 10 ** decimals;
     return value.toLocaleString();
   };
+
+  const isLoading = loading || programLoading;
 
   if (!publicKey) {
     return (
@@ -223,7 +170,7 @@ export const StakePanel: FC<StakePanelProps> = ({
         </div>
         <div>
           <h3 className="text-lg font-bold text-white">{isStaked ? 'Your Stake' : 'Stake'}</h3>
-          <p className="text-xs text-[#556688]">{isStaked ? 'Currently locked' : 'Lock tokens for rewards'}</p>
+          <p className="text-xs text-[#556688]">{isStaked ? 'On-chain custody' : 'Lock tokens for rewards'}</p>
         </div>
       </div>
 
@@ -232,7 +179,7 @@ export const StakePanel: FC<StakePanelProps> = ({
           <div className="rounded-xl bg-greed-bg border border-greed-border p-4">
             <p className="text-xs uppercase tracking-wider text-[#556688] mb-1">Staked Amount</p>
             <p className="text-3xl font-bold text-israel-blue-light font-mono">{formatStaked()}</p>
-            <p className="text-xs text-[#445566]">tokens</p>
+            <p className="text-xs text-[#445566]">tokens (on-chain)</p>
           </div>
 
           <div className="rounded-xl bg-greed-bg border border-greed-border p-4">
@@ -300,10 +247,10 @@ export const StakePanel: FC<StakePanelProps> = ({
                 </button>
                 <button
                   onClick={handleStake}
-                  disabled={loading || !amount || parseFloat(amount) <= 0}
+                  disabled={isLoading || !amount || parseFloat(amount) <= 0}
                   className="flex-1 py-3 px-4 rounded-xl btn-primary disabled:opacity-50"
                 >
-                  {loading ? 'Processing...' : 'Add'}
+                  {isLoading ? 'Processing...' : 'Add'}
                 </button>
               </div>
             </div>
@@ -318,10 +265,10 @@ export const StakePanel: FC<StakePanelProps> = ({
 
           <button
             onClick={handleUnstake}
-            disabled={loading}
+            disabled={isLoading}
             className="w-full py-3 px-4 rounded-xl btn-danger disabled:opacity-50"
           >
-            {loading ? 'Processing...' : 'Unstake All'}
+            {isLoading ? 'Processing...' : 'Unstake All'}
           </button>
         </div>
       ) : (
@@ -353,6 +300,10 @@ export const StakePanel: FC<StakePanelProps> = ({
 
           <div className="rounded-xl bg-greed-bg border border-greed-border p-4 space-y-2">
             <p className="text-xs text-[#8899bb] flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-greed-green" />
+              Tokens secured on-chain (trustless)
+            </p>
+            <p className="text-xs text-[#8899bb] flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-israel-blue" />
               {Math.floor(warmupDuration / 60)} minute warmup period
             </p>
@@ -364,17 +315,17 @@ export const StakePanel: FC<StakePanelProps> = ({
 
           <button
             onClick={handleStake}
-            disabled={loading || !amount || parseFloat(amount) <= 0}
+            disabled={isLoading || !amount || parseFloat(amount) <= 0}
             className="w-full py-3 px-4 rounded-xl btn-primary disabled:opacity-50"
           >
-            {loading ? 'Processing...' : 'Stake Tokens'}
+            {isLoading ? 'Processing...' : 'Stake Tokens'}
           </button>
         </div>
       )}
 
-      {error && (
+      {(error || programError) && (
         <div className="mt-4 p-4 rounded-xl bg-greed-red/10 border border-greed-red/20">
-          <p className="text-sm text-greed-red">{error}</p>
+          <p className="text-sm text-greed-red">{error || programError}</p>
         </div>
       )}
     </div>

@@ -115,13 +115,16 @@ export async function checkProgramReady(): Promise<boolean> {
   return true;
 }
 
-// Sync total staked from DB (custodial stakes)
-// Note: We don't sync individual user stakes from on-chain anymore
-// because users primarily use custodial staking (tokens sent to treasury)
+// Sync stakes - updates total from both on-chain and DB
 export async function syncAllStakes(): Promise<void> {
-  console.log('[SYNC] Syncing total staked from database...');
+  const programReady = await checkProgramReady();
+  if (!programReady) {
+    console.log('[SYNC] Program not ready, syncing from DB only');
+  }
 
-  // Just sync the total staked from DB
+  console.log('[SYNC] Syncing stakes...');
+
+  // Sync total staked (combines on-chain + DB)
   await syncTotalStaked();
 
   console.log('[SYNC] Stake sync complete');
