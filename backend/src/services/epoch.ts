@@ -204,18 +204,33 @@ export async function finalizeEpoch(): Promise<EpochResult> {
   // After epoch 100, quorum requirements change - don't auto-continue
   const isAutoEpochPhase = currentEpochNumber <= 100;
 
+  // Minimum distributable amount (0.01 SOL) - don't start countdown if less
+  const MIN_DISTRIBUTABLE = 10_000_000n; // 0.01 SOL
+  const hasEnoughToDistribute = sharedPool >= MIN_DISTRIBUTABLE;
+
   if (quorumReached && state.quorum_reached_at) {
-    const quorumTime = new Date(state.quorum_reached_at).getTime();
-    const elapsed = now.getTime() - quorumTime;
-    countdownComplete = elapsed >= config.epochDuration * 1000;
-    console.log(`[EPOCH] Countdown: ${elapsed}ms elapsed, ${config.epochDuration * 1000}ms required, complete: ${countdownComplete}`);
-  } else if (quorumReached && !state.quorum_reached_at && isAutoEpochPhase) {
-    // Quorum just reached - set timestamp and wait for countdown
+    if (!hasEnoughToDistribute) {
+      // Not enough to distribute - reset countdown and wait for more fees
+      await db.run(
+        'UPDATE global_state SET quorum_reached_at = NULL, last_updated = ? WHERE id = 1',
+        [nowIso]
+      );
+      console.log(`[EPOCH] Treasury too low (${sharedPool} lamports), resetting countdown until more fees arrive`);
+    } else {
+      const quorumTime = new Date(state.quorum_reached_at).getTime();
+      const elapsed = now.getTime() - quorumTime;
+      countdownComplete = elapsed >= config.epochDuration * 1000;
+      console.log(`[EPOCH] Countdown: ${elapsed}ms elapsed, ${config.epochDuration * 1000}ms required, complete: ${countdownComplete}`);
+    }
+  } else if (quorumReached && !state.quorum_reached_at && isAutoEpochPhase && hasEnoughToDistribute) {
+    // Quorum reached AND enough to distribute - set timestamp and wait for countdown
     await db.run(
       'UPDATE global_state SET quorum_reached_at = ?, last_updated = ? WHERE id = 1',
       [nowIso, nowIso]
     );
-    console.log('[EPOCH] Quorum just reached - countdown started, will distribute after countdown completes');
+    console.log('[EPOCH] Quorum reached with sufficient funds - countdown started');
+  } else if (quorumReached && !hasEnoughToDistribute) {
+    console.log(`[EPOCH] Quorum reached but treasury too low (${sharedPool} lamports), waiting for more fees`);
   }
 
   let distributed = false;

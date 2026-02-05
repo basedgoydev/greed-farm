@@ -895,6 +895,22 @@ router.post('/debug/fix-claimable', debugAuth, async (req: Request, res: Respons
   }
 });
 
+// POST /api/debug/reset-countdown - Reset epoch countdown (restart waiting for quorum)
+router.post('/debug/reset-countdown', debugAuth, async (req: Request, res: Response) => {
+  try {
+    await db.run(
+      'UPDATE global_state SET quorum_reached_at = NULL, last_updated = ? WHERE id = 1',
+      [new Date().toISOString()]
+    );
+    res.json({
+      success: true,
+      message: 'Countdown reset. Will restart when quorum is met and treasury has funds.'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/debug/reset-treasury-tracking - Reset treasury balance tracking
 router.post('/debug/reset-treasury-tracking', debugAuth, async (req: Request, res: Response) => {
   try {
