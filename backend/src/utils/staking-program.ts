@@ -252,23 +252,25 @@ export async function fetchAllOnChainStakes(): Promise<Array<{
 
     // UserStake accounts have a specific structure:
     // 8 bytes discriminator + 32 bytes owner + 8 bytes amount + 8 bytes staked_at + 1 byte bump
-    // Total: 57 bytes (but Anchor pads to 8-byte alignment, so likely 64 bytes)
+    // Anchor may pad this differently, so we try multiple sizes
 
-    // Filter by the stake_pool in the PDA seeds - we look for accounts that start with "user_stake" seed
-    const accounts = await connection.getProgramAccounts(STAKING_PROGRAM_ID, {
-      filters: [
-        // Filter by account size (UserStake struct size)
-        { dataSize: 57 }, // 8 discriminator + 32 owner + 8 amount + 8 staked_at + 1 bump
-      ],
-    });
+    // Try without size filter first to get all accounts, then filter by structure
+    const accounts = await connection.getProgramAccounts(STAKING_PROGRAM_ID);
 
-    console.log(`[SYNC] Found ${accounts.length} potential stake accounts on-chain`);
+    console.log(`[SYNC] Found ${accounts.length} total program accounts on-chain`);
 
     const stakes: Array<{ wallet: string; amount: bigint; stakedAt: number }> = [];
 
     for (const account of accounts) {
       try {
         const data = account.account.data;
+        const dataLength = data.length;
+
+        // UserStake accounts should be 57+ bytes (8 disc + 32 owner + 8 amount + 8 staked_at + 1 bump)
+        // Skip very small accounts (likely not UserStake) and StakePool (which is larger ~107 bytes)
+        if (dataLength < 57 || dataLength > 80) {
+          continue;
+        }
 
         // Skip 8-byte discriminator
         const accountData = data.slice(8);
@@ -285,8 +287,8 @@ export async function fetchAllOnChainStakes(): Promise<Array<{
 
         const amountBigInt = BigInt(amount);
 
-        // Only include stakes with amount > 0
-        if (amountBigInt > 0n) {
+        // Only include stakes with amount > 0 and valid timestamp
+        if (amountBigInt > 0n && stakedAt > 0 && stakedAt < Date.now() / 1000 + 86400) {
           stakes.push({
             wallet: owner,
             amount: amountBigInt,
@@ -299,7 +301,7 @@ export async function fetchAllOnChainStakes(): Promise<Array<{
       }
     }
 
-    console.log(`[SYNC] Parsed ${stakes.length} active stakes from on-chain`);
+    console.log(`[SYNC] Parsed ${stakes.length} active stakes from on-chain (from ${accounts.length} total accounts)`);
     return stakes;
   } catch (error) {
     console.error('Error fetching all on-chain stakes:', error);

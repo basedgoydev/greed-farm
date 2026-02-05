@@ -1314,6 +1314,118 @@ router.get('/debug/treasury-tokens', debugAuth, async (req: Request, res: Respon
   }
 });
 
+// POST /api/debug/trigger-epoch - Manually trigger epoch finalization with diagnostics
+router.post('/debug/trigger-epoch', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { finalizeEpoch, getGlobalState } = await import('../services/epoch.js');
+    const { fetchAllOnChainStakes, fetchTotalStaked, isPoolInitialized } = await import('../utils/staking-program.js');
+    const { getEligibleStakes, getTotalEligibleStake } = await import('../services/staking.js');
+    const { syncAllOnChainStakesToDB } = await import('../services/stake-sync.js');
+    const { getQuorumThreshold } = await import('../config.js');
+
+    // Diagnostics before epoch
+    const stateBefore = await getGlobalState();
+    const poolInitialized = await isPoolInitialized();
+
+    let onChainTotal = 0n;
+    let onChainStakes: any[] = [];
+    if (poolInitialized) {
+      onChainTotal = await fetchTotalStaked();
+      onChainStakes = await fetchAllOnChainStakes();
+    }
+
+    const dbEligibleStakes = await getEligibleStakes();
+    const dbEligibleTotal = await getTotalEligibleStake();
+    const quorumThreshold = getQuorumThreshold(stateBefore.current_epoch);
+
+    const sharedPool = toBigInt(stateBefore.shared_pool_lamports);
+    const quorumReached = (onChainTotal > dbEligibleTotal ? onChainTotal : dbEligibleTotal) >= quorumThreshold;
+
+    const diagnostics = {
+      poolInitialized,
+      currentEpoch: stateBefore.current_epoch,
+      sharedPoolLamports: sharedPool.toString(),
+      sharedPoolSol: (Number(sharedPool) / 1e9).toFixed(4),
+      greedPotLamports: stateBefore.greed_pot_lamports.toString(),
+      quorumThreshold: quorumThreshold.toString(),
+      onChainTotalStaked: onChainTotal.toString(),
+      onChainStakesCount: onChainStakes.length,
+      onChainStakes: onChainStakes.slice(0, 10).map(s => ({
+        wallet: s.wallet,
+        amount: s.amount.toString(),
+        stakedAt: new Date(s.stakedAt * 1000).toISOString()
+      })),
+      dbEligibleStakesCount: dbEligibleStakes.length,
+      dbEligibleTotal: dbEligibleTotal.toString(),
+      dbEligibleStakes: dbEligibleStakes.slice(0, 10).map(s => ({
+        wallet: s.wallet,
+        amount: s.amount.toString()
+      })),
+      quorumReached,
+      willDistribute: quorumReached && sharedPool > 0n && dbEligibleTotal > 0n,
+      failureReasons: [] as string[]
+    };
+
+    if (!quorumReached) {
+      diagnostics.failureReasons.push('Quorum not reached');
+    }
+    if (sharedPool <= 0n) {
+      diagnostics.failureReasons.push('Shared pool is empty (no fees collected)');
+    }
+    if (dbEligibleTotal <= 0n) {
+      diagnostics.failureReasons.push('No eligible stakes in DB (sync may have failed)');
+    }
+
+    // Trigger epoch
+    console.log('[DEBUG] Manually triggering epoch finalization...');
+    const result = await finalizeEpoch();
+
+    res.json({
+      success: true,
+      diagnostics,
+      epochResult: result
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/trigger-epoch:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+// GET /api/debug/check-account-size - Check actual on-chain stake account size
+router.get('/debug/check-account-size', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { Connection, PublicKey } = await import('@solana/web3.js');
+    const { STAKING_PROGRAM_ID } = await import('../utils/staking-program.js');
+
+    const connection = new Connection(config.solanaRpcUrl, 'confirmed');
+
+    // Get all program accounts without size filter
+    const allAccounts = await connection.getProgramAccounts(STAKING_PROGRAM_ID);
+
+    const accountSizes = allAccounts.map(acc => ({
+      pubkey: acc.pubkey.toBase58(),
+      size: acc.account.data.length,
+      owner: acc.account.owner.toBase58()
+    }));
+
+    // Group by size
+    const sizeGroups: Record<number, number> = {};
+    for (const acc of accountSizes) {
+      sizeGroups[acc.size] = (sizeGroups[acc.size] || 0) + 1;
+    }
+
+    res.json({
+      programId: STAKING_PROGRAM_ID.toBase58(),
+      totalAccounts: allAccounts.length,
+      sizeDistribution: sizeGroups,
+      accounts: accountSizes.slice(0, 20)
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/check-account-size:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/debug - Debug endpoint to check config
 router.get('/debug', debugAuth, async (req: Request, res: Response) => {
   try {
