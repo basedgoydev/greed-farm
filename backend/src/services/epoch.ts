@@ -9,6 +9,7 @@ import {
   isQuorumReached
 } from '../utils/math.js';
 import { getEligibleStakes, getTotalEligibleStake } from './staking.js';
+import { fetchTotalStaked, isPoolInitialized } from '../utils/staking-program.js';
 
 interface EpochResult {
   epochNumber: number;
@@ -237,6 +238,7 @@ export async function getTimeUntilNextEpoch(): Promise<number> {
 }
 
 // Get harvest progress (percentage of quorum)
+// Uses on-chain total for accurate staking data
 export async function getHarvestProgress(): Promise<{
   currentStake: string;
   requiredStake: string;
@@ -244,9 +246,24 @@ export async function getHarvestProgress(): Promise<{
   quorumPercentage: number;
 }> {
   const state = await getGlobalState();
-  const totalEligible = await getTotalEligibleStake();
   const currentQuorumPct = getQuorumPercentage(state.current_epoch);
   const required = getQuorumThreshold(state.current_epoch);
+
+  // Try to get on-chain total first (source of truth)
+  let totalEligible = 0n;
+  try {
+    const poolReady = await isPoolInitialized();
+    if (poolReady) {
+      totalEligible = await fetchTotalStaked();
+    }
+  } catch (error) {
+    console.error('Error fetching on-chain total:', error);
+  }
+
+  // Fall back to DB if on-chain returns 0
+  if (totalEligible === 0n) {
+    totalEligible = await getTotalEligibleStake();
+  }
 
   const pct = required > 0n
     ? Math.min(100, Number((totalEligible * 100n) / required))

@@ -76,20 +76,22 @@ export async function syncUserStake(wallet: string): Promise<{
   };
 }
 
-// Sync total staked - combines on-chain and custodial stakes
+// Sync total staked - prioritizes on-chain data
 export async function syncTotalStaked(): Promise<bigint> {
-  // Get on-chain total
+  // Get on-chain total (source of truth for on-chain staking)
   const onChainTotal = await fetchTotalStaked();
 
-  // Get custodial total from DB (stakes that are in DB but not on-chain)
+  // Get custodial total from DB (legacy stakes not yet migrated)
   const dbTotal = await db.get<{ total: string }>(
     'SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total FROM stakes WHERE is_active = TRUE'
   );
   const custodialTotal = toBigInt(dbTotal?.total || 0);
 
-  // Use the larger of the two (on-chain stakes would also be in DB after sync)
-  // For now, just use DB total since that's where custodial stakes live
-  const totalStaked = custodialTotal;
+  // Use on-chain total if available, otherwise fall back to DB
+  // On-chain is now the primary staking method
+  const totalStaked = onChainTotal > 0n ? onChainTotal : custodialTotal;
+
+  console.log(`[SYNC] On-chain total: ${onChainTotal}, DB total: ${custodialTotal}, Using: ${totalStaked}`);
 
   await db.run(
     'UPDATE global_state SET total_staked = ?, last_updated = ? WHERE id = 1',
