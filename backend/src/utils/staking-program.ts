@@ -8,16 +8,15 @@ import {
   Keypair,
 } from '@solana/web3.js';
 import {
-  TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
+  TOKEN_2022_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { config } from '../config.js';
 import BN from 'bn.js';
 
 // Program ID - UPDATE THIS after deployment
 export const STAKING_PROGRAM_ID = new PublicKey(
-  process.env.STAKING_PROGRAM_ID || 'GReeD1111111111111111111111111111111111111'
+  process.env.STAKING_PROGRAM_ID || 'HQ6hdQikYcCMxrMo6kXayYXYn5RPQmRLwZswiUjytuiy'
 );
 
 // Get connection
@@ -54,10 +53,11 @@ const INSTRUCTION_DISCRIMINATORS = {
   unstake: Buffer.from([90, 95, 107, 42, 205, 124, 50, 225]),
 };
 
-// Build initialize instruction
+// Build initialize instruction (Token-2022)
 export function buildInitializeInstruction(
   authority: PublicKey,
-  tokenMint: PublicKey
+  tokenMint: PublicKey,
+  decimals: number = 6
 ): TransactionInstruction {
   const [stakePool] = getStakePoolAddress(tokenMint);
   const [vault] = getVaultAddress(tokenMint);
@@ -68,18 +68,23 @@ export function buildInitializeInstruction(
     { pubkey: stakePool, isSigner: false, isWritable: true },
     { pubkey: vault, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
   ];
+
+  // Add decimals to instruction data
+  const decimalsBuffer = Buffer.alloc(1);
+  decimalsBuffer.writeUInt8(decimals, 0);
+  const data = Buffer.concat([INSTRUCTION_DISCRIMINATORS.initialize, decimalsBuffer]);
 
   return new TransactionInstruction({
     keys,
     programId: STAKING_PROGRAM_ID,
-    data: INSTRUCTION_DISCRIMINATORS.initialize,
+    data,
   });
 }
 
-// Build stake instruction
+// Build stake instruction (Token-2022)
 export function buildStakeInstruction(
   user: PublicKey,
   tokenMint: PublicKey,
@@ -93,11 +98,12 @@ export function buildStakeInstruction(
   const keys = [
     { pubkey: user, isSigner: true, isWritable: true },
     { pubkey: stakePool, isSigner: false, isWritable: true },
+    { pubkey: tokenMint, isSigner: false, isWritable: false },
     { pubkey: userStake, isSigner: false, isWritable: true },
     { pubkey: vault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
   ];
 
   // Encode amount as u64 little-endian
@@ -113,7 +119,7 @@ export function buildStakeInstruction(
   });
 }
 
-// Build unstake instruction
+// Build unstake instruction (Token-2022)
 export function buildUnstakeInstruction(
   user: PublicKey,
   tokenMint: PublicKey,
@@ -126,10 +132,11 @@ export function buildUnstakeInstruction(
   const keys = [
     { pubkey: user, isSigner: true, isWritable: true },
     { pubkey: stakePool, isSigner: false, isWritable: true },
+    { pubkey: tokenMint, isSigner: false, isWritable: false },
     { pubkey: userStake, isSigner: false, isWritable: true },
     { pubkey: vault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
   ];
 
   return new TransactionInstruction({
@@ -198,6 +205,9 @@ export async function fetchTotalStaked(): Promise<bigint> {
     // token_mint: Pubkey (32 bytes)
     // vault: Pubkey (32 bytes)
     // total_staked: u64 (8 bytes)
+    // bump: u8 (1 byte)
+    // vault_bump: u8 (1 byte)
+    // decimals: u8 (1 byte)
 
     const totalStaked = new BN(data.slice(96, 104), 'le').toString();
     return BigInt(totalStaked);

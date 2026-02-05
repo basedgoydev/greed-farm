@@ -7,17 +7,16 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
 } from '@solana/web3.js';
 import {
-  TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
+  TOKEN_2022_PROGRAM_ID,
+  getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 
 // Get program ID from env or use placeholder
 const STAKING_PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_STAKING_PROGRAM_ID || 'GReeD1111111111111111111111111111111111111'
+  process.env.NEXT_PUBLIC_STAKING_PROGRAM_ID || 'HQ6hdQikYcCMxrMo6kXayYXYn5RPQmRLwZswiUjytuiy'
 );
 
 const TOKEN_MINT = new PublicKey(
@@ -73,10 +72,12 @@ export function useStakingProgram() {
         const [vault] = getVaultAddress();
         const [userStake] = getUserStakeAddress(stakePool, publicKey);
 
-        // Get user's token account
-        const userTokenAccount = await getAssociatedTokenAddress(
+        // Get user's token account (Token-2022)
+        const userTokenAccount = getAssociatedTokenAddressSync(
           TOKEN_MINT,
-          publicKey
+          publicKey,
+          false,
+          TOKEN_2022_PROGRAM_ID
         );
 
         // Check if user token account exists
@@ -91,20 +92,22 @@ export function useStakingProgram() {
               publicKey,
               userTokenAccount,
               publicKey,
-              TOKEN_MINT
+              TOKEN_MINT,
+              TOKEN_2022_PROGRAM_ID
             )
           );
         }
 
-        // Build stake instruction
+        // Build stake instruction (with token_mint account for Token-2022)
         const keys = [
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: stakePool, isSigner: false, isWritable: true },
+          { pubkey: TOKEN_MINT, isSigner: false, isWritable: false },
           { pubkey: userStake, isSigner: false, isWritable: true },
           { pubkey: vault, isSigner: false, isWritable: true },
           { pubkey: userTokenAccount, isSigner: false, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
         ];
 
         // Encode amount as u64 little-endian
@@ -162,20 +165,23 @@ export function useStakingProgram() {
       const [vault] = getVaultAddress();
       const [userStake] = getUserStakeAddress(stakePool, publicKey);
 
-      // Get user's token account
-      const userTokenAccount = await getAssociatedTokenAddress(
+      // Get user's token account (Token-2022)
+      const userTokenAccount = getAssociatedTokenAddressSync(
         TOKEN_MINT,
-        publicKey
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID
       );
 
-      // Build unstake instruction
+      // Build unstake instruction (with token_mint account for Token-2022)
       const keys = [
         { pubkey: publicKey, isSigner: true, isWritable: true },
         { pubkey: stakePool, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_MINT, isSigner: false, isWritable: false },
         { pubkey: userStake, isSigner: false, isWritable: true },
         { pubkey: vault, isSigner: false, isWritable: true },
         { pubkey: userTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       ];
 
       const transaction = new Transaction();

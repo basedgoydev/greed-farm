@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked};
 
 declare_id!("HQ6hdQikYcCMxrMo6kXayYXYn5RPQmRLwZswiUjytuiy");
 
@@ -8,7 +8,7 @@ pub mod greed_staking {
     use super::*;
 
     /// Initialize the staking pool with vault
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, decimals: u8) -> Result<()> {
         let pool = &mut ctx.accounts.stake_pool;
         pool.authority = ctx.accounts.authority.key();
         pool.token_mint = ctx.accounts.token_mint.key();
@@ -16,6 +16,7 @@ pub mod greed_staking {
         pool.total_staked = 0;
         pool.bump = ctx.bumps.stake_pool;
         pool.vault_bump = ctx.bumps.vault;
+        pool.decimals = decimals;
 
         msg!("Stake pool initialized");
         Ok(())
@@ -25,15 +26,18 @@ pub mod greed_staking {
     pub fn stake(ctx: Context<StakeTokens>, amount: u64) -> Result<()> {
         require!(amount > 0, StakingError::ZeroAmount);
 
-        // Transfer tokens from user to vault
-        let cpi_accounts = Transfer {
+        let decimals = ctx.accounts.stake_pool.decimals;
+
+        // Transfer tokens from user to vault using transfer_checked
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.user_token_account.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
             to: ctx.accounts.vault.to_account_info(),
             authority: ctx.accounts.user.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        token::transfer(cpi_ctx, amount)?;
+        token_interface::transfer_checked(cpi_ctx, amount, decimals)?;
 
         // Update user stake
         let user_stake = &mut ctx.accounts.user_stake;
@@ -67,6 +71,7 @@ pub mod greed_staking {
         // Transfer tokens from vault back to user
         let token_mint = ctx.accounts.stake_pool.token_mint;
         let vault_bump = ctx.accounts.stake_pool.vault_bump;
+        let decimals = ctx.accounts.stake_pool.decimals;
         let seeds = &[
             b"vault",
             token_mint.as_ref(),
@@ -74,14 +79,15 @@ pub mod greed_staking {
         ];
         let signer = &[&seeds[..]];
 
-        let cpi_accounts = Transfer {
+        let cpi_accounts = TransferChecked {
             from: ctx.accounts.vault.to_account_info(),
+            mint: ctx.accounts.token_mint.to_account_info(),
             to: ctx.accounts.user_token_account.to_account_info(),
             authority: ctx.accounts.vault.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
-        token::transfer(cpi_ctx, amount)?;
+        token_interface::transfer_checked(cpi_ctx, amount, decimals)?;
 
         // Update pool total
         ctx.accounts.stake_pool.total_staked = ctx.accounts.stake_pool.total_staked.checked_sub(amount).ok_or(StakingError::Underflow)?;
@@ -96,11 +102,15 @@ pub mod greed_staking {
 }
 
 #[derive(Accounts)]
+#[instruction(decimals: u8)]
 pub struct Initialize<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    pub token_mint: Account<'info, Mint>,
+    #[account(
+        mint::token_program = token_program
+    )]
+    pub token_mint: InterfaceAccount<'info, Mint>,
 
     #[account(
         init,
@@ -116,13 +126,14 @@ pub struct Initialize<'info> {
         payer = authority,
         token::mint = token_mint,
         token::authority = vault,
+        token::token_program = token_program,
         seeds = [b"vault", token_mint.key().as_ref()],
         bump
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub rent: Sysvar<'info, Rent>,
 }
 
@@ -139,6 +150,11 @@ pub struct StakeTokens<'info> {
     pub stake_pool: Account<'info, StakePool>,
 
     #[account(
+        mint::token_program = token_program
+    )]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
         init_if_needed,
         payer = user,
         space = 8 + UserStake::INIT_SPACE,
@@ -152,17 +168,17 @@ pub struct StakeTokens<'info> {
         seeds = [b"vault", stake_pool.token_mint.as_ref()],
         bump = stake_pool.vault_bump
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         mut,
         constraint = user_token_account.owner == user.key(),
         constraint = user_token_account.mint == stake_pool.token_mint
     )]
-    pub user_token_account: Account<'info, TokenAccount>,
+    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
 
     pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -178,6 +194,11 @@ pub struct Unstake<'info> {
     pub stake_pool: Account<'info, StakePool>,
 
     #[account(
+        mint::token_program = token_program
+    )]
+    pub token_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
         mut,
         seeds = [b"user_stake", stake_pool.key().as_ref(), user.key().as_ref()],
         bump = user_stake.bump,
@@ -190,16 +211,16 @@ pub struct Unstake<'info> {
         seeds = [b"vault", stake_pool.token_mint.as_ref()],
         bump = stake_pool.vault_bump
     )]
-    pub vault: Account<'info, TokenAccount>,
+    pub vault: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
         mut,
         constraint = user_token_account.owner == user.key(),
         constraint = user_token_account.mint == stake_pool.token_mint
     )]
-    pub user_token_account: Account<'info, TokenAccount>,
+    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[account]
@@ -211,6 +232,7 @@ pub struct StakePool {
     pub total_staked: u64,
     pub bump: u8,
     pub vault_bump: u8,
+    pub decimals: u8,
 }
 
 #[account]

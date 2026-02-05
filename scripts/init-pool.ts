@@ -13,15 +13,18 @@ import {
   Keypair,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import * as fs from 'fs';
 import * as path from 'path';
 import 'dotenv/config';
+
+// Token-2022 Program ID
+const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
 // Configuration
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const PROGRAM_ID = new PublicKey(process.env.STAKING_PROGRAM_ID || 'GReeD1111111111111111111111111111111111111');
 const TOKEN_MINT = new PublicKey(process.env.TOKEN_MINT || '');
+const TOKEN_DECIMALS = parseInt(process.env.TOKEN_DECIMALS || '6');
 
 // Load wallet from file or env
 function loadWallet(): Keypair {
@@ -59,6 +62,7 @@ function getVaultAddress(): [PublicKey, number] {
 async function main() {
   console.log('========================================');
   console.log('  GreedFi Stake Pool Initialization');
+  console.log('  (Token-2022 Support)');
   console.log('========================================');
   console.log('');
 
@@ -71,6 +75,8 @@ async function main() {
   console.log(`  RPC: ${RPC_URL}`);
   console.log(`  Program ID: ${PROGRAM_ID.toBase58()}`);
   console.log(`  Token Mint: ${TOKEN_MINT.toBase58()}`);
+  console.log(`  Token Decimals: ${TOKEN_DECIMALS}`);
+  console.log(`  Token Program: Token-2022`);
   console.log('');
 
   const connection = new Connection(RPC_URL, 'confirmed');
@@ -105,7 +111,11 @@ async function main() {
   }
 
   // Build initialize instruction
+  // Discriminator for "initialize" + decimals (u8)
   const INIT_DISCRIMINATOR = Buffer.from([175, 175, 109, 31, 13, 152, 155, 237]);
+  const decimalsBuffer = Buffer.alloc(1);
+  decimalsBuffer.writeUInt8(TOKEN_DECIMALS, 0);
+  const instructionData = Buffer.concat([INIT_DISCRIMINATOR, decimalsBuffer]);
 
   const keys = [
     { pubkey: authority.publicKey, isSigner: true, isWritable: true },
@@ -113,14 +123,14 @@ async function main() {
     { pubkey: stakePool, isSigner: false, isWritable: true },
     { pubkey: vault, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
   ];
 
   const instruction = new TransactionInstruction({
     keys,
     programId: PROGRAM_ID,
-    data: INIT_DISCRIMINATOR,
+    data: instructionData,
   });
 
   console.log('Initializing stake pool...');
