@@ -127,17 +127,24 @@ export function useStakingProgram() {
           })
         );
 
-        // Get recent blockhash
-        const { blockhash } = await connection.getLatestBlockhash();
+        // Get recent blockhash with lastValidBlockHeight for better confirmation
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = publicKey;
 
         // Sign and send
         const signed = await signTransaction(transaction);
-        const signature = await connection.sendRawTransaction(signed.serialize());
+        const signature = await connection.sendRawTransaction(signed.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
 
-        // Confirm
-        await connection.confirmTransaction(signature, 'confirmed');
+        // Confirm with extended timeout
+        await connection.confirmTransaction({
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        }, 'confirmed');
 
         return signature;
       } catch (err: any) {
@@ -193,17 +200,24 @@ export function useStakingProgram() {
         })
       );
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
+      // Get recent blockhash with lastValidBlockHeight for better confirmation
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
 
       // Sign and send
       const signed = await signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signed.serialize());
+      const signature = await connection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
 
-      // Confirm
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Confirm with extended timeout
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
 
       return signature;
     } catch (err: any) {

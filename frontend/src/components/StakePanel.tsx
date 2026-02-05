@@ -309,7 +309,7 @@ export const StakePanel: FC<StakePanelProps> = ({
             </p>
             <p className="text-xs text-[#8899bb] flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-israel-blue" />
-              26% quorum required for distribution
+              7% quorum required for distribution
             </p>
           </div>
 
