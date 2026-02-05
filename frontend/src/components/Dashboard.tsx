@@ -235,26 +235,26 @@ export const Dashboard: FC = () => {
           </div>
         </div>
 
-        {/* Token Placeholder */}
+        {/* Token Info */}
         <div className="card-greed p-6 mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              {/* Token icon placeholder */}
-              <div className="w-14 h-14 rounded-xl border-2 border-dashed border-greed-border flex items-center justify-center">
-                <svg className="w-6 h-6 text-[#556688]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
+              {/* Token icon */}
+              <img
+                src="/logo.jpg"
+                alt="GFI Token"
+                className="w-14 h-14 rounded-xl pixelated drop-shadow-voxel"
+              />
               <div>
-                <p className="text-xs text-[#556688] uppercase tracking-wider mb-1">Your Token</p>
-                <p className="text-white font-semibold">Add token logo and name</p>
+                <p className="text-xs text-[#556688] uppercase tracking-wider mb-1">Token</p>
+                <p className="text-white font-semibold">GreedFi - $GFI</p>
               </div>
             </div>
 
             <div className="text-right">
               <p className="text-xs text-[#556688] uppercase tracking-wider mb-1">Contract</p>
               <p className="text-sm text-israel-blue-light font-mono">
-                {process.env.NEXT_PUBLIC_TOKEN_MINT?.slice(0, 8) || 'Configure'}...
+                {process.env.NEXT_PUBLIC_TOKEN_MINT?.slice(0, 4) || 'Coming'}...{process.env.NEXT_PUBLIC_TOKEN_MINT?.slice(-4) || 'Soon'}
               </p>
             </div>
           </div>
