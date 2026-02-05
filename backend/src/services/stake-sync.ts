@@ -4,6 +4,7 @@ import { fetchUserStake, fetchTotalStaked, isPoolInitialized } from '../utils/st
 import { Connection, PublicKey } from '@solana/web3.js';
 
 // Sync a user's stake from on-chain data
+// IMPORTANT: This only ADDS on-chain stakes to DB, it does NOT deactivate custodial stakes
 export async function syncUserStake(wallet: string): Promise<{
   amount: bigint;
   stakedAt: Date | null;
@@ -11,19 +12,31 @@ export async function syncUserStake(wallet: string): Promise<{
 }> {
   const onChainStake = await fetchUserStake(wallet);
 
+  // If no on-chain stake, just return current DB state - DO NOT deactivate
+  // Users may be using custodial staking (tokens sent to treasury wallet)
   if (!onChainStake || onChainStake.amount === 0n) {
-    // No on-chain stake - update DB if needed
+    // Return DB state if exists
     const user = await db.get<{ id: number }>('SELECT id FROM users WHERE wallet = ?', [wallet]);
     if (user) {
-      await db.run(
-        'UPDATE stakes SET is_active = FALSE, unstaked_at = ? WHERE user_id = ? AND is_active = TRUE',
-        [new Date().toISOString(), user.id]
+      const dbStake = await db.get<{ amount: string; staked_at: string }>(
+        'SELECT amount, staked_at FROM stakes WHERE user_id = ? AND is_active = TRUE',
+        [user.id]
       );
+      if (dbStake) {
+        const stakedAt = new Date(dbStake.staked_at);
+        const warmupEnds = new Date(stakedAt.getTime() + config.warmupDuration * 1000);
+        const isEligible = new Date() >= warmupEnds;
+        return {
+          amount: toBigInt(dbStake.amount),
+          stakedAt,
+          isEligible,
+        };
+      }
     }
     return { amount: 0n, stakedAt: null, isEligible: false };
   }
 
-  // Get or create user
+  // Get or create user for on-chain stake
   let user = await db.get<{ id: number }>('SELECT id FROM users WHERE wallet = ?', [wallet]);
   if (!user) {
     await db.run(
@@ -38,7 +51,7 @@ export async function syncUserStake(wallet: string): Promise<{
   const warmupEnds = new Date(stakedAt.getTime() + config.warmupDuration * 1000);
   const isEligible = now >= warmupEnds;
 
-  // Update or create stake record in DB
+  // Update or create stake record in DB (only if on-chain stake exists)
   const existingStake = await db.get(
     'SELECT id FROM stakes WHERE user_id = ? AND is_active = TRUE',
     [user!.id]
@@ -63,9 +76,20 @@ export async function syncUserStake(wallet: string): Promise<{
   };
 }
 
-// Sync total staked from on-chain
+// Sync total staked - combines on-chain and custodial stakes
 export async function syncTotalStaked(): Promise<bigint> {
-  const totalStaked = await fetchTotalStaked();
+  // Get on-chain total
+  const onChainTotal = await fetchTotalStaked();
+
+  // Get custodial total from DB (stakes that are in DB but not on-chain)
+  const dbTotal = await db.get<{ total: string }>(
+    'SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total FROM stakes WHERE is_active = TRUE'
+  );
+  const custodialTotal = toBigInt(dbTotal?.total || 0);
+
+  // Use the larger of the two (on-chain stakes would also be in DB after sync)
+  // For now, just use DB total since that's where custodial stakes live
+  const totalStaked = custodialTotal;
 
   await db.run(
     'UPDATE global_state SET total_staked = ?, last_updated = ? WHERE id = 1',
@@ -91,30 +115,13 @@ export async function checkProgramReady(): Promise<boolean> {
   return true;
 }
 
-// Sync all known users' stakes from chain
+// Sync total staked from DB (custodial stakes)
+// Note: We don't sync individual user stakes from on-chain anymore
+// because users primarily use custodial staking (tokens sent to treasury)
 export async function syncAllStakes(): Promise<void> {
-  const programReady = await checkProgramReady();
-  if (!programReady) {
-    console.log('[SYNC] Program not ready, skipping sync');
-    return;
-  }
+  console.log('[SYNC] Syncing total staked from database...');
 
-  console.log('[SYNC] Syncing stakes from on-chain...');
-
-  // Get all users with active stakes in DB
-  const users = await db.all<{ wallet: string }>(
-    'SELECT DISTINCT u.wallet FROM users u JOIN stakes s ON u.id = s.user_id WHERE s.is_active = TRUE'
-  );
-
-  for (const user of users) {
-    try {
-      await syncUserStake(user.wallet);
-    } catch (error) {
-      console.error(`[SYNC] Error syncing stake for ${user.wallet}:`, error);
-    }
-  }
-
-  // Sync total staked
+  // Just sync the total staked from DB
   await syncTotalStaked();
 
   console.log('[SYNC] Stake sync complete');

@@ -763,6 +763,68 @@ router.post('/debug/sync-treasury', debugAuth, async (req: Request, res: Respons
   }
 });
 
+// POST /api/debug/reactivate-stakes - Reactivate recently deactivated stakes (fix for sync bug)
+router.post('/debug/reactivate-stakes', debugAuth, async (req: Request, res: Response) => {
+  try {
+    // Find stakes that were deactivated in the last hour (likely by the buggy sync)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const deactivatedStakes = await db.all<{
+      id: number;
+      user_id: number;
+      wallet: string;
+      amount: string;
+      unstaked_at: string;
+    }>(
+      `SELECT s.id, s.user_id, u.wallet, s.amount, s.unstaked_at
+       FROM stakes s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.is_active = FALSE
+         AND s.unstaked_at >= ?
+         AND CAST(s.amount AS BIGINT) > 0`,
+      [oneHourAgo]
+    );
+
+    const reactivated: string[] = [];
+
+    for (const stake of deactivatedStakes) {
+      // Check if user doesn't have another active stake
+      const activeStake = await db.get(
+        'SELECT id FROM stakes WHERE user_id = ? AND is_active = TRUE',
+        [stake.user_id]
+      );
+
+      if (!activeStake) {
+        await db.run(
+          'UPDATE stakes SET is_active = TRUE, unstaked_at = NULL WHERE id = ?',
+          [stake.id]
+        );
+        reactivated.push(stake.wallet);
+      }
+    }
+
+    // Also update global total staked
+    const totalResult = await db.get<{ total: string }>(
+      'SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total FROM stakes WHERE is_active = TRUE'
+    );
+    const total = totalResult?.total || '0';
+
+    await db.run(
+      'UPDATE global_state SET total_staked = ?, last_updated = ? WHERE id = 1',
+      [total, new Date().toISOString()]
+    );
+
+    res.json({
+      success: true,
+      message: `Reactivated ${reactivated.length} stake(s)`,
+      reactivated,
+      newTotalStaked: total
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/debug/stakes - Check all active stakes
 router.get('/debug/stakes', debugAuth, async (req: Request, res: Response) => {
   try {
