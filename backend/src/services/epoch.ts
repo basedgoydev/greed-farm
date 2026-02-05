@@ -149,19 +149,26 @@ export async function finalizeEpoch(): Promise<EpochResult> {
   const state = await getGlobalState();
   const currentEpochNumber = state.current_epoch;
 
-  // Calculate fees received since last check
-  const lastBalance = toBigInt(state.treasury_last_balance);
-  const feesCollected = currentTreasuryBalance > lastBalance
-    ? safeSub(currentTreasuryBalance, lastBalance)
+  // Reserve for transaction fees (0.05 SOL)
+  const TX_FEE_RESERVE = 50_000_000n; // 0.05 SOL in lamports
+
+  // Calculate distributable balance (total treasury minus reserve)
+  const distributableBalance = currentTreasuryBalance > TX_FEE_RESERVE
+    ? safeSub(currentTreasuryBalance, TX_FEE_RESERVE)
     : 0n;
 
-  // Split fees: 80% to shared pool, 20% to greed pot
-  const sharedPoolAddition = percentage(feesCollected, config.sharedPoolPercentage);
-  const greedPotAddition = percentage(feesCollected, config.greedPotPercentage);
+  // 80% of total treasury goes to shared pool for distribution
+  // 20% stays in treasury as reserve (for greed payouts + tx fees)
+  // Greed pot only grows from user losses, not from treasury %
+  const sharedPoolAddition = percentage(distributableBalance, config.sharedPoolPercentage);
+  const greedPotAddition = 0n; // Greed pot grows only from user losses
 
-  // Update pools with new fees
-  let sharedPool = safeAdd(toBigInt(state.shared_pool_lamports), sharedPoolAddition);
-  const greedPot = safeAdd(toBigInt(state.greed_pot_lamports), greedPotAddition);
+  // Track fees collected for logging
+  const feesCollected = distributableBalance;
+
+  // Set shared pool to the new amount (not cumulative - we distribute everything each epoch)
+  let sharedPool = sharedPoolAddition;
+  const greedPot = toBigInt(state.greed_pot_lamports); // Keep existing greed pot (grows from losses only)
 
   // Get eligible stakes (past warmup) - check on-chain first
   let totalEligibleStake = 0n;
