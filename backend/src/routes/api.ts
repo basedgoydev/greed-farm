@@ -147,6 +147,11 @@ router.get('/status', async (req: Request, res: Response) => {
     const harvestProgress = await getHarvestProgress();
     const timeUntilNextEpoch = await getTimeUntilNextEpoch();
 
+    // Get active staker count
+    const stakerCount = await db.get<{ count: number }>(
+      'SELECT COUNT(*) as count FROM stakes WHERE is_active = TRUE AND amount > 0'
+    );
+
     // Get current treasury balance
     const currentTreasuryBalance = await getTreasuryBalance();
     const lastBalance = toBigInt(state.treasury_last_balance || 0);
@@ -192,7 +197,8 @@ router.get('/status', async (req: Request, res: Response) => {
         warmupDuration: config.warmupDuration,
         quorumPercentage: harvestProgress.quorumPercentage,
         totalSupply: config.totalTokenSupply.toString()
-      }
+      },
+      stakerCount: stakerCount?.count || 0
     });
   } catch (error) {
     console.error('Error in /status:', error);

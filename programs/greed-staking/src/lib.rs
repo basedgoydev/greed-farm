@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("7jX1wARzGUpdxPoziofJPy6Kz5fQ3ksoTFzrDquKk7xn");
+declare_id!("HQ6hdQikYcCMxrMo6kXayYXYn5RPQmRLwZswiUjytuiy");
 
 #[program]
 pub mod greed_staking {

@@ -1,12 +1,33 @@
 'use client';
 
-import { FC } from 'react';
+import { FC, useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { Logo } from './Logo';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
 export const Header: FC = () => {
   const { connected, publicKey } = useWallet();
+  const [goyCount, setGoyCount] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchGoyCount = async () => {
+      try {
+        const res = await fetch(`${API_URL}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setGoyCount(data.stakerCount || 0);
+        }
+      } catch (error) {
+        console.error('Failed to fetch goy count:', error);
+      }
+    };
+
+    fetchGoyCount();
+    const interval = setInterval(fetchGoyCount, 30000); // Update every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-greed-border bg-greed-bg/90 backdrop-blur-xl">
@@ -30,10 +51,12 @@ export const Header: FC = () => {
 
           {/* Right side */}
           <div className="flex items-center gap-4">
-            {/* Network indicator */}
+            {/* Goy counter */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-greed-card border border-greed-border">
               <div className="w-2 h-2 rounded-full bg-greed-green animate-pulse" />
-              <span className="text-xs text-[#8899bb] font-medium uppercase tracking-wider">Mainnet</span>
+              <span className="text-xs text-[#8899bb] font-medium tracking-wider">
+                goy counter: <span className="text-white font-bold">{goyCount}</span>
+              </span>
             </div>
 
             {/* Connected wallet */}

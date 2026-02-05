@@ -1,19 +1,21 @@
+[toolchain]
+
 [features]
-resolution = true
+seeds = false
 skip-lint = false
 
 [programs.devnet]
 greed_staking = "7jX1wARzGUpdxPoziofJPy6Kz5fQ3ksoTFzrDquKk7xn"
 
 [programs.mainnet]
-greed_staking = "7jX1wARzGUpdxPoziofJPy6Kz5fQ3ksoTFzrDquKk7xn"
+greed_staking = "HQ6hdQikYcCMxrMo6kXayYXYn5RPQmRLwZswiUjytuiy"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "mainnet"
-wallet = "~/.config/solana/id.json"
+cluster = "Mainnet"
+wallet = "/home/nugget/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
