@@ -56,5 +56,7 @@ export function getQuorumPercentage(epochNumber: number): number {
 
 export function getQuorumThreshold(epochNumber: number): bigint {
   const percentage = getQuorumPercentage(epochNumber);
-  return (config.totalTokenSupply * BigInt(percentage)) / 100n;
+  // Include decimals to match on-chain token amounts
+  const supplyWithDecimals = config.totalTokenSupply * BigInt(10 ** config.tokenDecimals);
+  return (supplyWithDecimals * BigInt(percentage)) / 100n;
 }
