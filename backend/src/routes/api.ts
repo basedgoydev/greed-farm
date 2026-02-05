@@ -1002,6 +1002,105 @@ router.get('/debug/user-stake/:wallet', debugAuth, async (req: Request, res: Res
   }
 });
 
+// POST /api/debug/migrate-orphaned-stakes - Return tokens for stakes deactivated by bug
+router.post('/debug/migrate-orphaned-stakes', debugAuth, async (req: Request, res: Response) => {
+  try {
+    const { transferTokensToUser } = await import('../utils/solana.js');
+
+    // Find all inactive stakes that don't have a corresponding migration/unstake transaction
+    // These were deactivated by the buggy sync but never got tokens back
+    const orphanedStakes = await db.all<{
+      stake_id: number;
+      user_id: number;
+      wallet: string;
+      amount: string;
+    }>(
+      `SELECT s.id as stake_id, s.user_id, u.wallet, s.amount
+       FROM stakes s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.is_active = FALSE
+         AND CAST(s.amount AS BIGINT) > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM transactions t
+           WHERE t.user_id = s.user_id
+             AND t.action IN ('unstake', 'migrate')
+             AND t.status = 'completed'
+             AND CAST(t.amount_lamports AS BIGINT) = CAST(s.amount AS BIGINT)
+         )`
+    );
+
+    if (orphanedStakes.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No orphaned stakes to migrate',
+        migrated: []
+      });
+    }
+
+    // Group by wallet to avoid duplicate transfers
+    const walletTotals = new Map<string, { amount: bigint; stakeIds: number[]; userId: number }>();
+    for (const stake of orphanedStakes) {
+      const existing = walletTotals.get(stake.wallet);
+      const amount = toBigInt(stake.amount);
+      if (existing) {
+        existing.amount += amount;
+        existing.stakeIds.push(stake.stake_id);
+      } else {
+        walletTotals.set(stake.wallet, { amount, stakeIds: [stake.stake_id], userId: stake.user_id });
+      }
+    }
+
+    const migrated: { wallet: string; amount: string; signature: string }[] = [];
+    const failed: { wallet: string; amount: string; error: string }[] = [];
+
+    for (const [wallet, data] of walletTotals) {
+      try {
+        const signature = await transferTokensToUser(wallet, data.amount);
+
+        // Log the migration
+        const now = new Date().toISOString();
+        await db.run(
+          'INSERT INTO transactions (tx_id, user_id, action, amount_lamports, status, solana_signature, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [
+            `migrate-orphan-${Date.now()}-${data.userId}`,
+            data.userId,
+            'migrate',
+            data.amount.toString(),
+            'completed',
+            signature,
+            now
+          ]
+        );
+
+        migrated.push({
+          wallet,
+          amount: data.amount.toString(),
+          signature
+        });
+
+        console.log(`[MIGRATE-ORPHAN] Returned ${data.amount} tokens to ${wallet}`);
+      } catch (error: any) {
+        console.error(`[MIGRATE-ORPHAN] Failed for ${wallet}:`, error);
+        failed.push({
+          wallet,
+          amount: data.amount.toString(),
+          error: error.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Migrated ${migrated.length} wallets, ${failed.length} failed`,
+      migrated,
+      failed
+    });
+  } catch (error: any) {
+    console.error('Error in /debug/migrate-orphaned-stakes:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/debug/migrate-all-custodial - Return tokens to ALL custodial stakers
 router.post('/debug/migrate-all-custodial', debugAuth, async (req: Request, res: Response) => {
   try {
